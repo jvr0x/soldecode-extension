@@ -4,6 +4,14 @@ A Chrome extension that shows you what a Solana transaction will do **before you
 
 When a dApp asks you to sign a transaction, SolDecode intercepts the request, simulates the transaction on-chain, and shows a human-readable preview with balance changes, risk warnings, and step-by-step breakdown — all before the Phantom popup appears.
 
+<p align="center">
+  <img src="assets/screenshots/kamino-preview.png" alt="Kamino preview" height="360">
+  &nbsp;&nbsp;
+  <img src="assets/screenshots/jupiter-preview.png" alt="Jupiter preview" height="360">
+  &nbsp;&nbsp;
+  <img src="assets/screenshots/raydium-preview.png" alt="Raydium preview" height="360">
+</p>
+
 ## How It Works
 
 1. **Interception** — SolDecode monkey-patches Phantom's signing methods (`signTransaction`, `signAndSendTransaction`) on the original provider object. It also hooks into the [Wallet Standard](https://github.com/wallet-standard/wallet-standard) protocol used by modern dApps like Jupiter.
