@@ -128,6 +128,18 @@ export interface TokenBalance {
   };
 }
 
+/** Address poisoning detection result. */
+export interface PoisoningResult {
+  /** Whether poisoning was detected. */
+  detected: boolean;
+  /** The suspicious sender address. */
+  suspiciousAddress?: string;
+  /** The real contact address it mimics. */
+  realContactAddress?: string;
+  /** Human-readable warning message. */
+  warning?: string;
+}
+
 /** Extension settings stored in chrome.storage.local. */
 export interface ExtensionSettings {
   /** Whether the extension is enabled. */
