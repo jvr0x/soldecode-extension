@@ -293,7 +293,28 @@ function wrapStandardFeatureMethod(
 }
 
 /**
+ * Replaces a property on a potentially frozen object.
+ * Tries direct assignment first, then Object.defineProperty, then returns false.
+ */
+function forceSetProperty(obj: Record<string, unknown>, key: string, value: unknown): boolean {
+  // Try direct assignment
+  try {
+    obj[key] = value;
+    if (obj[key] === value) return true;
+  } catch { /* frozen */ }
+
+  // Try defineProperty (works even on frozen objects if the property is configurable)
+  try {
+    Object.defineProperty(obj, key, { value, writable: true, configurable: true });
+    return true;
+  } catch { /* non-configurable */ }
+
+  return false;
+}
+
+/**
  * Wraps a Wallet Standard wallet object's signing features with our interception.
+ * Handles frozen feature objects by replacing them on the wallet.features map.
  */
 function wrapStandardWallet(wallet: Record<string, unknown>): Record<string, unknown> {
   if ((wallet as any).__soldecodeWrapped) return wallet;
@@ -305,19 +326,51 @@ function wrapStandardWallet(wallet: Record<string, unknown>): Record<string, unk
   const signTxFeature = features["solana:signTransaction"];
   if (signTxFeature?.signTransaction && typeof signTxFeature.signTransaction === "function") {
     const original = signTxFeature.signTransaction as (...args: unknown[]) => Promise<unknown>;
-    signTxFeature.signTransaction = wrapStandardFeatureMethod(original, "solana:signTransaction");
-    console.log("[SolDecode] wrapped Wallet Standard solana:signTransaction");
+    const wrapped = wrapStandardFeatureMethod(original, "solana:signTransaction");
+
+    if (!forceSetProperty(signTxFeature, "signTransaction", wrapped)) {
+      // Feature object is frozen — replace the entire feature entry
+      const newFeature = { ...signTxFeature, signTransaction: wrapped };
+      forceSetProperty(features, "solana:signTransaction", newFeature);
+      console.log("[SolDecode] wrapped Wallet Standard solana:signTransaction (replaced frozen feature)");
+    } else {
+      console.log("[SolDecode] wrapped Wallet Standard solana:signTransaction");
+    }
   }
 
   // Intercept solana:signAndSendTransaction
   const signSendFeature = features["solana:signAndSendTransaction"];
   if (signSendFeature?.signAndSendTransaction && typeof signSendFeature.signAndSendTransaction === "function") {
     const original = signSendFeature.signAndSendTransaction as (...args: unknown[]) => Promise<unknown>;
-    signSendFeature.signAndSendTransaction = wrapStandardFeatureMethod(original, "solana:signAndSendTransaction");
-    console.log("[SolDecode] wrapped Wallet Standard solana:signAndSendTransaction");
+    const wrapped = wrapStandardFeatureMethod(original, "solana:signAndSendTransaction");
+
+    if (!forceSetProperty(signSendFeature, "signAndSendTransaction", wrapped)) {
+      // Feature object is frozen — replace the entire feature entry
+      const newFeature = { ...signSendFeature, signAndSendTransaction: wrapped };
+      forceSetProperty(features, "solana:signAndSendTransaction", newFeature);
+      console.log("[SolDecode] wrapped Wallet Standard solana:signAndSendTransaction (replaced frozen feature)");
+    } else {
+      console.log("[SolDecode] wrapped Wallet Standard solana:signAndSendTransaction");
+    }
   }
 
-  (wallet as any).__soldecodeWrapped = true;
+  // Also wrap the wallet.features getter with a Proxy so even if the dApp
+  // looks up features later, it gets our wrapped versions
+  if (!Object.isFrozen(wallet)) {
+    try {
+      const featuresProxy = new Proxy(features, {
+        get(target, prop, receiver) {
+          return Reflect.get(target, prop, receiver);
+        },
+      });
+      wallet.features = featuresProxy;
+    } catch { /* ignore if we can't replace */ }
+  }
+
+  try {
+    (wallet as any).__soldecodeWrapped = true;
+  } catch { /* frozen wallet object */ }
+
   return wallet;
 }
 
