@@ -103,148 +103,138 @@ window.addEventListener("message", (event) => {
 });
 
 /**
- * Wraps a Phantom provider object with a Proxy that intercepts signing methods.
- * Guards against double-wrapping via __soldecodeWrapped flag.
+ * Monkey-patches a provider's signing methods IN PLACE on the original object.
+ *
+ * Reason: Proxy-based wrapping creates a NEW object, but Phantom's Wallet Standard
+ * adapter captures a reference to the ORIGINAL provider during init. A Proxy assigned
+ * to window.phantom.solana is never seen by the adapter. By patching the methods
+ * directly on the original object, any code holding a reference to it (including
+ * the Wallet Standard adapter's internal `this._provider`) will call our patched
+ * methods because property lookup happens at call time.
  */
-function wrapProvider(provider: Record<string, unknown>): Record<string, unknown> {
-  if (!provider || provider.__soldecodeWrapped) return provider;
+function patchProvider(provider: Record<string, unknown>): void {
+  if (!provider || provider.__soldecodePatched) return;
 
-  return new Proxy(provider, {
-    get(target, prop, receiver) {
-      if (prop === "__soldecodeWrapped") return true;
-
-      if (prop === "signTransaction") {
-        return async function (transaction: unknown) {
-          console.log("[SolDecode] intercepted signTransaction");
-          const base64 = serializeTransaction(transaction);
-          console.log("[SolDecode] serialized:", base64 ? `${base64.length} chars` : "FAILED");
-          if (base64) {
-            const action = await requestSimulation(base64);
-            if (action === "REJECT") {
-              throw new Error("Transaction rejected by user via SolDecode");
-            }
-          }
-          return (target.signTransaction as (tx: unknown) => Promise<unknown>)(transaction);
-        };
+  // Patch signTransaction
+  if (typeof provider.signTransaction === "function") {
+    const original = (provider.signTransaction as Function).bind(provider);
+    provider.signTransaction = async function (transaction: unknown) {
+      console.log("[SolDecode] intercepted signTransaction");
+      const base64 = serializeTransaction(transaction);
+      if (base64) {
+        const action = await requestSimulation(base64);
+        if (action === "REJECT") {
+          throw new Error("Transaction rejected by user via SolDecode");
+        }
       }
+      return original(transaction);
+    };
+    console.log("[SolDecode] patched provider.signTransaction");
+  }
 
-      if (prop === "signAllTransactions") {
-        return async function (transactions: unknown[]) {
-          // Reason: only preview the first transaction — showing N drawers would be disruptive.
-          if (transactions.length > 0) {
-            const base64 = serializeTransaction(transactions[0]);
-            if (base64) {
-              const action = await requestSimulation(base64);
-              if (action === "REJECT") {
-                throw new Error("Transaction rejected by user via SolDecode");
-              }
-            }
+  // Patch signAllTransactions
+  if (typeof provider.signAllTransactions === "function") {
+    const original = (provider.signAllTransactions as Function).bind(provider);
+    provider.signAllTransactions = async function (transactions: unknown[]) {
+      console.log("[SolDecode] intercepted signAllTransactions");
+      if (transactions.length > 0) {
+        const base64 = serializeTransaction(transactions[0]);
+        if (base64) {
+          const action = await requestSimulation(base64);
+          if (action === "REJECT") {
+            throw new Error("Transaction rejected by user via SolDecode");
           }
-          return (target.signAllTransactions as (txs: unknown[]) => Promise<unknown[]>)(transactions);
-        };
+        }
       }
+      return original(transactions);
+    };
+    console.log("[SolDecode] patched provider.signAllTransactions");
+  }
 
-      if (prop === "signAndSendTransaction") {
-        return async function (transaction: unknown, options?: unknown) {
-          console.log("[SolDecode] intercepted signAndSendTransaction");
-          const base64 = serializeTransaction(transaction);
-          console.log("[SolDecode] serialized:", base64 ? `${base64.length} chars` : "FAILED");
-          if (base64) {
-            const action = await requestSimulation(base64);
-            if (action === "REJECT") {
-              throw new Error("Transaction rejected by user via SolDecode");
-            }
-          }
-          return (target.signAndSendTransaction as (tx: unknown, opts?: unknown) => Promise<unknown>)(
-            transaction,
-            options,
-          );
-        };
+  // Patch signAndSendTransaction
+  if (typeof provider.signAndSendTransaction === "function") {
+    const original = (provider.signAndSendTransaction as Function).bind(provider);
+    provider.signAndSendTransaction = async function (transaction: unknown, options?: unknown) {
+      console.log("[SolDecode] intercepted signAndSendTransaction");
+      const base64 = serializeTransaction(transaction);
+      if (base64) {
+        const action = await requestSimulation(base64);
+        if (action === "REJECT") {
+          throw new Error("Transaction rejected by user via SolDecode");
+        }
       }
+      return original(transaction, options);
+    };
+    console.log("[SolDecode] patched provider.signAndSendTransaction");
+  }
 
-      return Reflect.get(target, prop, receiver);
-    },
-  });
+  provider.__soldecodePatched = true;
 }
 
 /**
  * Installs proxy traps on window.solana and window.phantom.solana.
  * Uses Object.defineProperty so the trap fires whenever Phantom injects itself.
  */
+/**
+ * Patches providers on window.solana and window.phantom.solana in place.
+ * patchProvider modifies the original object's methods, so any code holding
+ * a reference to that object (including Wallet Standard adapters) will
+ * call our patched methods.
+ */
 function install(): void {
-  // Strategy 1: Wrap window.solana if it already exists
-  const existingSolana = (window as unknown as Record<string, unknown>).solana as
-    | Record<string, unknown>
-    | undefined;
-  if (existingSolana) {
-    console.log("[SolDecode] window.solana already exists, wrapping immediately");
-    (window as unknown as Record<string, unknown>).solana = wrapProvider(existingSolana);
-  }
-
-  // Strategy 2: Trap future window.solana assignments via defineProperty
-  // Reason: Phantom may not have injected yet when our script runs
-  try {
-    let _solana = (window as unknown as Record<string, unknown>).solana as
-      | Record<string, unknown>
-      | undefined;
-    if (_solana) _solana = wrapProvider(_solana);
-
-    Object.defineProperty(window, "solana", {
-      configurable: true,
-      get() {
-        return _solana;
-      },
-      set(val: Record<string, unknown>) {
-        console.log("[SolDecode] window.solana was set — wrapping provider");
-        _solana = wrapProvider(val);
-      },
-    });
-  } catch (e) {
-    // Property might be non-configurable — already wrapped above if it existed
-    console.log("[SolDecode] Could not trap window.solana setter:", (e as Error).message);
-  }
-
-  // Strategy 3: Wrap window.phantom.solana directly if it exists
-  // Reason: window.phantom is often non-configurable (Phantom locks it), so we
-  // can't use defineProperty. Instead, directly replace the .solana property.
+  // Patch window.phantom.solana (the original provider that adapters capture)
   try {
     const phantom = (window as unknown as Record<string, unknown>).phantom as
       | Record<string, unknown>
       | undefined;
     if (phantom?.solana) {
-      console.log("[SolDecode] window.phantom.solana exists, wrapping directly");
-      phantom.solana = wrapProvider(phantom.solana as Record<string, unknown>);
+      console.log("[SolDecode] patching window.phantom.solana in place");
+      patchProvider(phantom.solana as Record<string, unknown>);
     }
   } catch (e) {
-    console.log("[SolDecode] Could not wrap window.phantom.solana:", (e as Error).message);
+    console.log("[SolDecode] Could not patch window.phantom.solana:", (e as Error).message);
   }
 
-  // Strategy 4: If neither existed yet, poll briefly for Phantom to appear
-  // Reason: content script injection timing is unpredictable
-  if (!existingSolana) {
+  // Patch window.solana (may be same object or a separate reference)
+  try {
+    const solana = (window as unknown as Record<string, unknown>).solana as
+      | Record<string, unknown>
+      | undefined;
+    if (solana) {
+      console.log("[SolDecode] patching window.solana in place");
+      patchProvider(solana);
+    }
+  } catch (e) {
+    console.log("[SolDecode] Could not patch window.solana:", (e as Error).message);
+  }
+
+  // Trap future assignments via defineProperty (for late-loading wallets)
+  try {
+    const currentSolana = (window as unknown as Record<string, unknown>).solana;
+    Object.defineProperty(window, "solana", {
+      configurable: true,
+      get() { return currentSolana; },
+      set(val: Record<string, unknown>) {
+        console.log("[SolDecode] window.solana was set — patching");
+        patchProvider(val);
+      },
+    });
+  } catch { /* non-configurable — already patched above */ }
+
+  // Poll for Phantom if not yet available
+  if (!(window as unknown as Record<string, unknown>).phantom) {
     let attempts = 0;
     const poller = setInterval(() => {
       attempts++;
-      const sol = (window as unknown as Record<string, unknown>).solana as
+      const phantom = (window as unknown as Record<string, unknown>).phantom as
         | Record<string, unknown>
         | undefined;
-      if (sol && !sol.__soldecodeWrapped) {
-        console.log("[SolDecode] Found window.solana via polling (attempt", attempts, ")");
-        (window as unknown as Record<string, unknown>).solana = wrapProvider(sol);
-
-        // Also wrap phantom.solana
-        try {
-          const phantom = (window as unknown as Record<string, unknown>).phantom as
-            | Record<string, unknown>
-            | undefined;
-          if (phantom?.solana && !(phantom.solana as Record<string, unknown>).__soldecodeWrapped) {
-            phantom.solana = wrapProvider(phantom.solana as Record<string, unknown>);
-          }
-        } catch { /* ignore */ }
-
+      if (phantom?.solana && !(phantom.solana as Record<string, unknown>).__soldecodePatched) {
+        console.log("[SolDecode] Found phantom.solana via polling, patching");
+        patchProvider(phantom.solana as Record<string, unknown>);
         clearInterval(poller);
       }
-      if (attempts > 50) clearInterval(poller); // Stop after ~5 seconds
+      if (attempts > 50) clearInterval(poller);
     }, 100);
   }
 }
@@ -419,6 +409,36 @@ function installWalletStandardInterceptor(): void {
   console.log("[SolDecode] Wallet Standard interceptor installed");
 }
 
+/**
+ * Intercept window.postMessage to see what Phantom sends internally.
+ * This is diagnostic — we log Phantom-related messages to understand the protocol.
+ */
+function installPostMessageLogger(): void {
+  const originalPostMessage = window.postMessage.bind(window);
+  window.postMessage = function (message: unknown, ...args: unknown[]) {
+    if (
+      typeof message === "object" &&
+      message !== null &&
+      !("type" in message && (message as any).type?.startsWith?.("SOLDECODE"))
+    ) {
+      const msgType = (message as any).type ?? (message as any).method ?? "unknown";
+      const channel = (message as any).channel ?? "";
+      if (
+        typeof msgType === "string" &&
+        (msgType.toLowerCase().includes("sign") ||
+          msgType.toLowerCase().includes("phantom") ||
+          msgType.toLowerCase().includes("solana") ||
+          channel.toString().toLowerCase().includes("phantom"))
+      ) {
+        console.log("[SolDecode] postMessage intercepted:", msgType, channel, message);
+      }
+    }
+    return (originalPostMessage as Function).call(window, message, ...args);
+  } as typeof window.postMessage;
+  console.log("[SolDecode] postMessage logger installed");
+}
+
 install();
 installWalletStandardInterceptor();
+installPostMessageLogger();
 console.log("[SolDecode] inject.ts loaded — all interceptors installed");
