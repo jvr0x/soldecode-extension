@@ -322,70 +322,46 @@ function wrapStandardWallet(wallet: Record<string, unknown>): Record<string, unk
 }
 
 /**
- * Intercepts Wallet Standard wallet registrations.
+ * Intercepts Wallet Standard wallets by registering as an "app" in the protocol.
+ *
  * Reason: Modern dApps (Jupiter, etc.) use Wallet Standard instead of window.solana.
- * Phantom dispatches 'wallet-standard:register-wallet' events with a callback.
- * We intercept the callback to wrap the wallet before the dApp sees it.
+ * The protocol works via events:
+ * - Wallets dispatch 'wallet-standard:register-wallet' with a callback
+ * - Apps dispatch 'wallet-standard:app-ready' with a { register } API
+ * - Whichever arrives first stores its callback; when the other arrives, they handshake
+ *
+ * By dispatching 'wallet-standard:app-ready', we trigger already-registered wallets
+ * (like Phantom) to call our register function. Since wallet objects are passed by
+ * reference, mutating their features here affects the dApp's copy too.
  */
 function installWalletStandardInterceptor(): void {
-  // Intercept future registrations
+  // Step 1: Listen for any wallet registrations (future wallets)
   window.addEventListener("wallet-standard:register-wallet", (event: Event) => {
-    const detail = (event as CustomEvent).detail;
-    if (typeof detail === "function") {
-      // The detail is a callback: (api: { register: (wallet) => void }) => void
-      // We can't easily intercept the callback itself, but we can intercept
-      // the app-ready event that triggers wallet discovery
-      console.log("[SolDecode] detected wallet-standard:register-wallet event");
+    const callback = (event as CustomEvent).detail;
+    if (typeof callback === "function") {
+      // Wallet is registering — give it our API so it calls register()
+      callback({
+        register(wallet: Record<string, unknown>) {
+          console.log("[SolDecode] Wallet Standard: wallet registered via event:", (wallet as any).name);
+          wrapStandardWallet(wallet);
+        },
+      });
     }
-  }, true); // useCapture to get it before the dApp
+  });
 
-  // Intercept the app-ready handshake by patching addEventListener
-  const originalAddEventListener = EventTarget.prototype.addEventListener;
-  EventTarget.prototype.addEventListener = function (
-    type: string,
-    listener: EventListenerOrEventListenerObject,
-    options?: boolean | AddEventListenerOptions,
-  ) {
-    if (type === "wallet-standard:register-wallet" && this === window) {
-      // Wrap the listener to intercept the wallet registration callback
-      const wrappedListener = function (this: unknown, event: Event) {
-        const originalCallback = (event as CustomEvent).detail;
-        if (typeof originalCallback === "function") {
-          // Replace the register function to wrap wallets before they're registered
-          const wrappedCallback = (api: { register: (wallet: Record<string, unknown>) => void }) => {
-            const originalRegister = api.register;
-            api.register = (wallet: Record<string, unknown>) => {
-              console.log("[SolDecode] intercepting Wallet Standard registration for:", (wallet as any).name);
-              wrapStandardWallet(wallet);
-              originalRegister(wallet);
-            };
-            originalCallback(api);
-          };
-
-          // Create a new event with the wrapped callback
-          const wrappedEvent = new CustomEvent("wallet-standard:register-wallet", {
-            detail: wrappedCallback,
-            bubbles: (event as CustomEvent).bubbles,
-            cancelable: (event as CustomEvent).cancelable,
-          });
-          if (typeof listener === "function") {
-            listener.call(this, wrappedEvent);
-          } else {
-            listener.handleEvent(wrappedEvent);
-          }
-          return;
-        }
-        // Fallback: call original
-        if (typeof listener === "function") {
-          listener.call(this, event);
-        } else {
-          listener.handleEvent(event);
-        }
-      };
-      return originalAddEventListener.call(this, type, wrappedListener as EventListener, options);
-    }
-    return originalAddEventListener.call(this, type, listener, options);
-  };
+  // Step 2: Dispatch app-ready to trigger already-registered wallets to re-register
+  // Reason: Phantom likely registered before our script ran. Dispatching app-ready
+  // causes Phantom to call back with its wallet object.
+  window.dispatchEvent(
+    new CustomEvent("wallet-standard:app-ready", {
+      detail: Object.freeze({
+        register(wallet: Record<string, unknown>) {
+          console.log("[SolDecode] Wallet Standard: wallet registered via app-ready:", (wallet as any).name);
+          wrapStandardWallet(wallet);
+        },
+      }),
+    }),
+  );
 
   console.log("[SolDecode] Wallet Standard interceptor installed");
 }
