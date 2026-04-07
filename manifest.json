@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "SolDecode — Transaction Preview",
+  "version": "0.1.0",
+  "description": "See what Solana transactions will do before you sign them.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://*.helius-rpc.com/*"],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content-script.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["inject.js"],
+      "matches": ["http://*/*", "https://*/*"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": { "16": "assets/icon-16.png", "48": "assets/icon-48.png", "128": "assets/icon-128.png" }
+  },
+  "icons": { "16": "assets/icon-16.png", "48": "assets/icon-48.png", "128": "assets/icon-128.png" }
+}
