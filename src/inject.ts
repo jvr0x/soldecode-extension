@@ -115,7 +115,9 @@ function wrapProvider(provider: Record<string, unknown>): Record<string, unknown
 
       if (prop === "signTransaction") {
         return async function (transaction: unknown) {
+          console.log("[SolDecode] intercepted signTransaction");
           const base64 = serializeTransaction(transaction);
+          console.log("[SolDecode] serialized:", base64 ? `${base64.length} chars` : "FAILED");
           if (base64) {
             const action = await requestSimulation(base64);
             if (action === "REJECT") {
@@ -144,7 +146,9 @@ function wrapProvider(provider: Record<string, unknown>): Record<string, unknown
 
       if (prop === "signAndSendTransaction") {
         return async function (transaction: unknown, options?: unknown) {
+          console.log("[SolDecode] intercepted signAndSendTransaction");
           const base64 = serializeTransaction(transaction);
+          console.log("[SolDecode] serialized:", base64 ? `${base64.length} chars` : "FAILED");
           if (base64) {
             const action = await requestSimulation(base64);
             if (action === "REJECT") {
@@ -168,42 +172,82 @@ function wrapProvider(provider: Record<string, unknown>): Record<string, unknown
  * Uses Object.defineProperty so the trap fires whenever Phantom injects itself.
  */
 function install(): void {
-  // Trap window.solana
-  let _solana = (window as unknown as Record<string, unknown>).solana as
+  // Strategy 1: Wrap window.solana if it already exists
+  const existingSolana = (window as unknown as Record<string, unknown>).solana as
     | Record<string, unknown>
     | undefined;
-  if (_solana) _solana = wrapProvider(_solana);
-
-  Object.defineProperty(window, "solana", {
-    configurable: true,
-    get() {
-      return _solana;
-    },
-    set(val: Record<string, unknown>) {
-      _solana = wrapProvider(val);
-    },
-  });
-
-  // Trap window.phantom.solana
-  let _phantom = (window as unknown as Record<string, unknown>).phantom as
-    | Record<string, unknown>
-    | undefined;
-  if (_phantom?.solana) {
-    _phantom.solana = wrapProvider(_phantom.solana as Record<string, unknown>);
+  if (existingSolana) {
+    console.log("[SolDecode] window.solana already exists, wrapping immediately");
+    (window as unknown as Record<string, unknown>).solana = wrapProvider(existingSolana);
   }
 
-  Object.defineProperty(window, "phantom", {
-    configurable: true,
-    get() {
-      return _phantom;
-    },
-    set(val: Record<string, unknown>) {
-      if (val?.solana) {
-        val.solana = wrapProvider(val.solana as Record<string, unknown>);
+  // Strategy 2: Trap future window.solana assignments via defineProperty
+  // Reason: Phantom may not have injected yet when our script runs
+  try {
+    let _solana = (window as unknown as Record<string, unknown>).solana as
+      | Record<string, unknown>
+      | undefined;
+    if (_solana) _solana = wrapProvider(_solana);
+
+    Object.defineProperty(window, "solana", {
+      configurable: true,
+      get() {
+        return _solana;
+      },
+      set(val: Record<string, unknown>) {
+        console.log("[SolDecode] window.solana was set — wrapping provider");
+        _solana = wrapProvider(val);
+      },
+    });
+  } catch (e) {
+    // Property might be non-configurable — already wrapped above if it existed
+    console.log("[SolDecode] Could not trap window.solana setter:", (e as Error).message);
+  }
+
+  // Strategy 3: Wrap window.phantom.solana directly if it exists
+  // Reason: window.phantom is often non-configurable (Phantom locks it), so we
+  // can't use defineProperty. Instead, directly replace the .solana property.
+  try {
+    const phantom = (window as unknown as Record<string, unknown>).phantom as
+      | Record<string, unknown>
+      | undefined;
+    if (phantom?.solana) {
+      console.log("[SolDecode] window.phantom.solana exists, wrapping directly");
+      phantom.solana = wrapProvider(phantom.solana as Record<string, unknown>);
+    }
+  } catch (e) {
+    console.log("[SolDecode] Could not wrap window.phantom.solana:", (e as Error).message);
+  }
+
+  // Strategy 4: If neither existed yet, poll briefly for Phantom to appear
+  // Reason: content script injection timing is unpredictable
+  if (!existingSolana) {
+    let attempts = 0;
+    const poller = setInterval(() => {
+      attempts++;
+      const sol = (window as unknown as Record<string, unknown>).solana as
+        | Record<string, unknown>
+        | undefined;
+      if (sol && !sol.__soldecodeWrapped) {
+        console.log("[SolDecode] Found window.solana via polling (attempt", attempts, ")");
+        (window as unknown as Record<string, unknown>).solana = wrapProvider(sol);
+
+        // Also wrap phantom.solana
+        try {
+          const phantom = (window as unknown as Record<string, unknown>).phantom as
+            | Record<string, unknown>
+            | undefined;
+          if (phantom?.solana && !(phantom.solana as Record<string, unknown>).__soldecodeWrapped) {
+            phantom.solana = wrapProvider(phantom.solana as Record<string, unknown>);
+          }
+        } catch { /* ignore */ }
+
+        clearInterval(poller);
       }
-      _phantom = val;
-    },
-  });
+      if (attempts > 50) clearInterval(poller); // Stop after ~5 seconds
+    }, 100);
+  }
 }
 
 install();
+console.log("[SolDecode] inject.ts loaded — proxy traps installed");
