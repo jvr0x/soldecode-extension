@@ -100,7 +100,7 @@ function buildDrawerHTML(preview: SimulatedPreview): string {
 
   let html = `
     <div class="header">
-      <span class="logo">⚡ SolDecode</span>
+      <span class="logo">🔍 SolDecode</span>
       <span class="badge ${badgeClass}">${badgeText}</span>
     </div>
   `;
