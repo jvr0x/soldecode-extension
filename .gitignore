@@ -1,5 +1,39 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
+
+# Environment
+.env
 .env.local
+.env.*
+
+# Chrome extension packages
 *.crx
 *.zip
+*.pem
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+
+# Superpowers brainstorm sessions
+.superpowers/
