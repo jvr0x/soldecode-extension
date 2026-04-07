@@ -1,12 +1,91 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SolDecode</title>
-  </head>
-  <body>
-    <h1>SolDecode</h1>
-    <script src="popup.js"></script>
-  </body>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 300px;
+      padding: 16px;
+      background: #0a0a1a;
+      color: #e0e0e0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+    }
+    .header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .logo { color: #00d4aa; font-weight: bold; font-size: 16px; }
+    .subtitle { color: #888; font-size: 11px; margin-bottom: 16px; }
+    .field { margin-bottom: 12px; }
+    .label { color: #888; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+    .toggle-row { display: flex; justify-content: space-between; align-items: center; }
+    .toggle { position: relative; width: 40px; height: 22px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: #333; border-radius: 11px; transition: 0.2s;
+    }
+    .slider:before {
+      position: absolute; content: "";
+      height: 16px; width: 16px;
+      left: 3px; bottom: 3px;
+      background: #888; border-radius: 50%; transition: 0.2s;
+    }
+    input:checked + .slider { background: #00d4aa; }
+    input:checked + .slider:before { transform: translateX(18px); background: #fff; }
+    input[type="text"] {
+      width: 100%;
+      background: #1a1a2e;
+      border: 1px solid #333;
+      color: #fff;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-family: monospace;
+    }
+    input[type="text"]:focus { outline: none; border-color: #00d4aa; }
+    .save-btn {
+      width: 100%;
+      background: #00d4aa;
+      color: #0a0a1a;
+      border: none;
+      padding: 8px;
+      border-radius: 4px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .save-btn:hover { opacity: 0.9; }
+    .status { color: #00d4aa; font-size: 10px; margin-top: 8px; display: none; }
+    .help { color: #666; font-size: 10px; margin-top: 4px; }
+    .help a { color: #8b5cf6; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="logo">⚡ SolDecode</span>
+  </div>
+  <div class="subtitle">Transaction preview before signing</div>
+
+  <div class="field">
+    <div class="toggle-row">
+      <div class="label">Extension Enabled</div>
+      <label class="toggle">
+        <input type="checkbox" id="enabled">
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="field">
+    <div class="label">Helius RPC Endpoint</div>
+    <input type="text" id="rpcEndpoint" placeholder="https://mainnet.helius-rpc.com/?api-key=YOUR_KEY">
+    <div class="help">Get a free key at <a href="https://dashboard.helius.dev" target="_blank">dashboard.helius.dev</a></div>
+  </div>
+
+  <button class="save-btn" id="save">Save Settings</button>
+  <div class="status" id="status">✓ Settings saved</div>
+
+  <script src="popup.js"></script>
+</body>
 </html>
