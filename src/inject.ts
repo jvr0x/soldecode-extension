@@ -249,5 +249,147 @@ function install(): void {
   }
 }
 
+/**
+ * Wraps a Wallet Standard feature method (like signTransaction).
+ * The Wallet Standard passes transactions differently — as { transaction: Uint8Array } objects.
+ */
+function wrapStandardFeatureMethod(
+  originalMethod: (...args: unknown[]) => Promise<unknown>,
+  featureName: string,
+): (...args: unknown[]) => Promise<unknown> {
+  return async function (...args: unknown[]): Promise<unknown> {
+    console.log(`[SolDecode] intercepted Wallet Standard ${featureName}`);
+
+    // Wallet Standard passes an object with a `transaction` field (Uint8Array)
+    // For signAndSendTransaction: { transaction: Uint8Array, ... }
+    // For signTransaction: { transaction: Uint8Array, ... }
+    const input = args[0] as Record<string, unknown> | undefined;
+    let base64: string | null = null;
+
+    if (input) {
+      // Try to find the transaction bytes
+      const txBytes = (input.transaction as Uint8Array) ??
+        ((input as { transactions?: Uint8Array[] }).transactions?.[0]);
+
+      if (txBytes instanceof Uint8Array) {
+        let binary = "";
+        for (let i = 0; i < txBytes.length; i++) {
+          binary += String.fromCharCode(txBytes[i]);
+        }
+        base64 = btoa(binary);
+        console.log(`[SolDecode] serialized from Wallet Standard: ${base64.length} chars`);
+      }
+    }
+
+    if (base64) {
+      const action = await requestSimulation(base64);
+      if (action === "REJECT") {
+        throw new Error("Transaction rejected by user via SolDecode");
+      }
+    }
+
+    return originalMethod.apply(this, args);
+  };
+}
+
+/**
+ * Wraps a Wallet Standard wallet object's signing features with our interception.
+ */
+function wrapStandardWallet(wallet: Record<string, unknown>): Record<string, unknown> {
+  if ((wallet as any).__soldecodeWrapped) return wallet;
+
+  const features = wallet.features as Record<string, Record<string, unknown>> | undefined;
+  if (!features) return wallet;
+
+  // Intercept solana:signTransaction
+  const signTxFeature = features["solana:signTransaction"];
+  if (signTxFeature?.signTransaction && typeof signTxFeature.signTransaction === "function") {
+    const original = signTxFeature.signTransaction as (...args: unknown[]) => Promise<unknown>;
+    signTxFeature.signTransaction = wrapStandardFeatureMethod(original, "solana:signTransaction");
+    console.log("[SolDecode] wrapped Wallet Standard solana:signTransaction");
+  }
+
+  // Intercept solana:signAndSendTransaction
+  const signSendFeature = features["solana:signAndSendTransaction"];
+  if (signSendFeature?.signAndSendTransaction && typeof signSendFeature.signAndSendTransaction === "function") {
+    const original = signSendFeature.signAndSendTransaction as (...args: unknown[]) => Promise<unknown>;
+    signSendFeature.signAndSendTransaction = wrapStandardFeatureMethod(original, "solana:signAndSendTransaction");
+    console.log("[SolDecode] wrapped Wallet Standard solana:signAndSendTransaction");
+  }
+
+  (wallet as any).__soldecodeWrapped = true;
+  return wallet;
+}
+
+/**
+ * Intercepts Wallet Standard wallet registrations.
+ * Reason: Modern dApps (Jupiter, etc.) use Wallet Standard instead of window.solana.
+ * Phantom dispatches 'wallet-standard:register-wallet' events with a callback.
+ * We intercept the callback to wrap the wallet before the dApp sees it.
+ */
+function installWalletStandardInterceptor(): void {
+  // Intercept future registrations
+  window.addEventListener("wallet-standard:register-wallet", (event: Event) => {
+    const detail = (event as CustomEvent).detail;
+    if (typeof detail === "function") {
+      // The detail is a callback: (api: { register: (wallet) => void }) => void
+      // We can't easily intercept the callback itself, but we can intercept
+      // the app-ready event that triggers wallet discovery
+      console.log("[SolDecode] detected wallet-standard:register-wallet event");
+    }
+  }, true); // useCapture to get it before the dApp
+
+  // Intercept the app-ready handshake by patching addEventListener
+  const originalAddEventListener = EventTarget.prototype.addEventListener;
+  EventTarget.prototype.addEventListener = function (
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ) {
+    if (type === "wallet-standard:register-wallet" && this === window) {
+      // Wrap the listener to intercept the wallet registration callback
+      const wrappedListener = function (this: unknown, event: Event) {
+        const originalCallback = (event as CustomEvent).detail;
+        if (typeof originalCallback === "function") {
+          // Replace the register function to wrap wallets before they're registered
+          const wrappedCallback = (api: { register: (wallet: Record<string, unknown>) => void }) => {
+            const originalRegister = api.register;
+            api.register = (wallet: Record<string, unknown>) => {
+              console.log("[SolDecode] intercepting Wallet Standard registration for:", (wallet as any).name);
+              wrapStandardWallet(wallet);
+              originalRegister(wallet);
+            };
+            originalCallback(api);
+          };
+
+          // Create a new event with the wrapped callback
+          const wrappedEvent = new CustomEvent("wallet-standard:register-wallet", {
+            detail: wrappedCallback,
+            bubbles: (event as CustomEvent).bubbles,
+            cancelable: (event as CustomEvent).cancelable,
+          });
+          if (typeof listener === "function") {
+            listener.call(this, wrappedEvent);
+          } else {
+            listener.handleEvent(wrappedEvent);
+          }
+          return;
+        }
+        // Fallback: call original
+        if (typeof listener === "function") {
+          listener.call(this, event);
+        } else {
+          listener.handleEvent(event);
+        }
+      };
+      return originalAddEventListener.call(this, type, wrappedListener as EventListener, options);
+    }
+    return originalAddEventListener.call(this, type, listener, options);
+  };
+
+  console.log("[SolDecode] Wallet Standard interceptor installed");
+}
+
 install();
-console.log("[SolDecode] inject.ts loaded — proxy traps installed");
+installWalletStandardInterceptor();
+console.log("[SolDecode] inject.ts loaded — all interceptors installed");
