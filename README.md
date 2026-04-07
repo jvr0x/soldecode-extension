@@ -1,0 +1,154 @@
+# SolDecode Extension
+
+A Chrome extension that shows you what a Solana transaction will do **before you sign it**.
+
+When a dApp asks you to sign a transaction, SolDecode intercepts the request, simulates the transaction on-chain, and shows a human-readable preview with balance changes, risk warnings, and step-by-step breakdown — all before the Phantom popup appears.
+
+## How It Works
+
+1. **Interception** — SolDecode monkey-patches Phantom's signing methods (`signTransaction`, `signAndSendTransaction`) on the original provider object. It also hooks into the [Wallet Standard](https://github.com/wallet-standard/wallet-standard) protocol used by modern dApps like Jupiter.
+
+2. **Simulation** — When a dApp requests a signature, the extension serializes the unsigned transaction and calls Solana's `simulateTransaction` RPC with `sigVerify: false` and `replaceRecentBlockhash: true`. This executes the transaction against current on-chain state without submitting it.
+
+3. **Decoding** — The simulation result (pre/post balances, token balances, program logs) is decoded into a human-readable preview: what tokens move, which programs execute, and what the net effect on your wallet will be.
+
+4. **Risk Analysis** — The extension checks for dangerous patterns:
+   - Token approvals (programs requesting permission to spend your tokens)
+   - High-value outgoing transfers (> 10 SOL)
+   - Simulation failures (the transaction would fail if submitted)
+
+5. **Preview Drawer** — A slide-in panel appears alongside the Phantom popup showing the decoded preview. You click **Proceed** to continue to Phantom, or **Reject** to cancel the transaction.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│  dApp (Jupiter, Raydium, etc.)                      │
+│  calls signTransaction / signAndSendTransaction     │
+└──────────────────────┬──────────────────────────────┘
+                       │
+         ┌─────────────▼──────────────┐
+         │  inject.ts (Main World)    │
+         │  Monkey-patches provider   │
+         │  Serializes unsigned tx    │
+         │  Posts to content script   │
+         └─────────────┬──────────────┘
+                       │ window.postMessage
+         ┌─────────────▼──────────────┐
+         │  content-script.ts         │
+         │  Message bridge            │
+         │  Mounts Shadow DOM drawer  │
+         └─────────────┬──────────────┘
+                       │ chrome.runtime.sendMessage
+         ┌─────────────▼──────────────┐
+         │  service-worker.ts         │
+         │  simulateTransaction RPC   │
+         │  Decode balance diffs      │
+         │  Risk analysis             │
+         └─────────────┬──────────────┘
+                       │
+         ┌─────────────▼──────────────┐
+         │  Preview Drawer            │
+         │  Summary + balance changes │
+         │  Risk warnings             │
+         │  [Proceed] [Reject]        │
+         └────────────────────────────┘
+```
+
+### Extension Components
+
+| File | Context | Responsibility |
+|------|---------|----------------|
+| `inject.ts` | Page (Main World) | Patches `window.phantom.solana` methods in-place, intercepts Wallet Standard registrations, serializes transactions |
+| `content-script.ts` | Isolated World | Bridges messages between inject.ts and service worker, injects Shadow DOM drawer |
+| `service-worker.ts` | Background | Calls `simulateTransaction` RPC, decodes results, runs risk analysis |
+| `ui/drawer.ts` | Shadow DOM | Renders the preview panel with balance changes, steps, and action buttons |
+| `popup/` | Extension Popup | Settings UI: enable/disable toggle, Helius RPC endpoint configuration |
+
+### Why Monkey-Patching?
+
+Phantom's Wallet Standard adapter captures a reference to the original provider object during initialization. A Proxy wrapper creates a **new** object that the adapter never sees. Monkey-patching modifies the methods on the **original** object, so any code holding a reference to it — including the adapter's internal `this._provider` — calls our patched methods.
+
+## Installation
+
+### From Source (Developer Mode)
+
+```bash
+# Clone and install
+git clone <repo-url>
+cd soldecode-extension
+npm install
+
+# Build
+npm run build
+
+# Load in Chrome
+# 1. Open chrome://extensions/
+# 2. Enable "Developer mode"
+# 3. Click "Load unpacked"
+# 4. Select the dist/ folder
+```
+
+### Configuration
+
+1. Click the SolDecode icon in the Chrome toolbar
+2. Enter your Helius RPC endpoint: `https://mainnet.helius-rpc.com/?api-key=YOUR_KEY`
+   - Get a free API key at [dashboard.helius.dev](https://dashboard.helius.dev)
+3. Toggle "Extension Enabled" on
+4. Click "Save Settings"
+
+## Development
+
+```bash
+# Watch mode (rebuilds on file changes)
+npm run dev
+
+# Run tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Production build
+npm run build
+```
+
+### Testing
+
+The extension uses Vitest for unit tests covering:
+
+- **Simulation decoder** — Verifies balance diff parsing from mock RPC responses
+- **Instruction parser** — Verifies program log extraction and name resolution
+- **Risk analyzer** — Verifies token approval detection and high-value warnings
+- **Error mapper** — Verifies Solana error code to human-readable explanation mapping
+
+```bash
+npm test
+```
+
+## Supported Wallets
+
+- **Phantom** (via legacy `window.solana` and Wallet Standard)
+
+Other wallets (Solflare, Backpack, Brave Wallet) are not yet supported.
+
+## Supported Transaction Types
+
+The decoder shows balance changes for any transaction. Program-specific decoding is available for:
+
+- Token swaps (Jupiter, Raydium, Orca, Pump.fun, Meteora)
+- SOL and SPL token transfers
+- Token approvals (flagged as warnings)
+
+Unsupported transaction types still show raw balance diffs and program names.
+
+## Privacy
+
+- Transactions are simulated via your configured RPC endpoint (Helius) — they are **not** sent to any SolDecode server
+- No analytics, tracking, or telemetry
+- The extension only activates when a dApp requests a signature
+- Your API key is stored locally in `chrome.storage.local`
+
+## License
+
+MIT
