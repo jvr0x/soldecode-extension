@@ -151,4 +151,4 @@ Unsupported transaction types still show raw balance diffs and program names.
 
 ## License
 
-MIT
+GPL-3.0 — see [LICENSE](LICENSE)
