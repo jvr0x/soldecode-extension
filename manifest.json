@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "SolDecode — Transaction Preview",
+  "name": "SolDecode — Solana Transaction Preview",
   "version": "0.1.0",
   "description": "See what Solana transactions will do before you sign them.",
   "permissions": ["storage"],
