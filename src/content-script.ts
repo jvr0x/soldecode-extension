@@ -44,6 +44,7 @@ window.addEventListener("message", async (event) => {
   }
 
   const { id, tx, origin } = data as { id: string; tx: string; origin: string };
+  console.log("[SolDecode] content-script received SOLDECODE_SIMULATE, id:", id);
 
   try {
     // Check whether the extension is enabled and has an RPC endpoint configured.
@@ -51,6 +52,7 @@ window.addEventListener("message", async (event) => {
       | { enabled: boolean; configured: boolean }
       | undefined;
 
+    console.log("[SolDecode] settings response:", settingsResponse);
     if (!settingsResponse?.enabled || !settingsResponse?.configured) {
       // Not configured or disabled — let the transaction proceed without preview.
       window.postMessage({ type: "SOLDECODE_RESULT", id, action: "PROCEED" }, "*");
@@ -88,3 +90,4 @@ window.addEventListener("message", async (event) => {
 
 // Inject the main-world script immediately at document_start.
 injectMainWorldScript();
+console.log("[SolDecode] content-script loaded");
