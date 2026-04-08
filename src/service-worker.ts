@@ -5,6 +5,8 @@
 
 import { simulateTransaction } from "./lib/simulator";
 import { decodeSimulation } from "./lib/simulation-decoder";
+import { calculateFeeSol, parseTxFeeInputs, BASE_LAMPORTS_PER_SIGNATURE } from "./lib/fee-calculator";
+import { LAMPORTS_PER_SOL } from "./lib/constants";
 import type { ExtensionSettings } from "./types";
 
 /** Base58 alphabet used by Solana. */
@@ -124,7 +126,21 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           ? providedPubkey
           : accountKeys[0] ?? "";
 
-        const preview = await decodeSimulation(simResult, userPubkey, accountKeys, origin);
+        // Compute the real fee from parsed Compute Budget settings + actual
+        // CU usage. Falls back to a conservative single-signature base fee
+        // when the tx can't be parsed (better than the old broken estimate).
+        const feeInputs = parseTxFeeInputs(tx);
+        const estimatedFee = feeInputs
+          ? calculateFeeSol(feeInputs, simResult.unitsConsumed)
+          : BASE_LAMPORTS_PER_SIGNATURE / LAMPORTS_PER_SOL;
+
+        const preview = await decodeSimulation(
+          simResult,
+          userPubkey,
+          accountKeys,
+          origin,
+          estimatedFee,
+        );
 
         sendResponse({ type: "SIMULATE_RESULT", id, preview });
       } catch (error) {

@@ -265,12 +265,17 @@ function buildSummary(balanceChanges: BalanceChange[], failed: boolean): string 
  * @param userPubkey - The wallet address to track balance changes for.
  * @param accountKeys - Ordered account keys from the transaction message.
  * @param origin - The dApp URL that triggered the simulation.
+ * @param estimatedFee - Pre-computed transaction fee in SOL. The decoder is
+ *                       intentionally fee-blind: fee math depends on the raw
+ *                       tx bytes (compute budget instructions, signatures),
+ *                       which the caller already has access to.
  */
 export async function decodeSimulation(
   sim: SimulationResult,
   userPubkey: string,
   accountKeys: string[],
   origin: string,
+  estimatedFee: number,
 ): Promise<SimulatedPreview> {
   const failed = sim.err !== null;
 
@@ -310,9 +315,6 @@ export async function decodeSimulation(
 
   const summary = buildSummary(balanceChanges, failed);
   const plainSteps = buildPlainSteps(balanceChanges, steps, failed);
-
-  // Rough fee estimate: unitsConsumed * base fee per CU (1 lamport/CU = 1e-9 SOL/CU).
-  const estimatedFee = sim.unitsConsumed * 0.000000001;
 
   return {
     risk: finalRisk,
