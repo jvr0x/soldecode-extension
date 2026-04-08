@@ -922,3 +922,59 @@ describe("warning aggregation", () => {
     expect(warnings.length).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe("detectDustSolReceipt", () => {
+  it("fires on incoming sub-dust SOL (0.0005 SOL = 500_000 lamports)", () => {
+    // 500_000 lamports is well below DUST_THRESHOLD_LAMPORTS (1_000_000).
+    const balanceChanges: BalanceChange[] = [
+      { mint: SOL_MINT, symbol: "SOL", name: "Solana", amount: 0.0005, decimals: 9, logoURI: null },
+    ];
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      balanceChanges,
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      EMPTY_INFO_MAP,
+    );
+    expect(warnings.some((w) => w.title === "Sub-Dust Incoming Transfer")).toBe(true);
+  });
+
+  it("does NOT fire on incoming non-dust SOL (0.1 SOL = 100_000_000 lamports)", () => {
+    // 100_000_000 lamports is far above DUST_THRESHOLD_LAMPORTS (1_000_000).
+    const balanceChanges: BalanceChange[] = [
+      { mint: SOL_MINT, symbol: "SOL", name: "Solana", amount: 0.1, decimals: 9, logoURI: null },
+    ];
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      balanceChanges,
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      EMPTY_INFO_MAP,
+    );
+    expect(warnings.some((w) => w.title === "Sub-Dust Incoming Transfer")).toBe(false);
+  });
+
+  it("does NOT fire on outgoing SOL even if the amount is sub-dust", () => {
+    // Negative amount means SOL is leaving the wallet — detector only cares about incoming.
+    const balanceChanges: BalanceChange[] = [
+      { mint: SOL_MINT, symbol: "SOL", name: "Solana", amount: -0.0005, decimals: 9, logoURI: null },
+    ];
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      balanceChanges,
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      EMPTY_INFO_MAP,
+    );
+    expect(warnings.some((w) => w.title === "Sub-Dust Incoming Transfer")).toBe(false);
+  });
+});

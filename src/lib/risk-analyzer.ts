@@ -30,6 +30,7 @@ import {
 } from "./constants";
 import type { TxFeeInputs } from "./fee-calculator";
 import { readU64LEBigInt } from "./tx-parser";
+import { detectStandalonePoisoning } from "./poisoning-detector";
 
 /** SOL outflow threshold above which a transfer is flagged as high-value. */
 const HIGH_VALUE_SOL_THRESHOLD = 10;
@@ -503,6 +504,39 @@ function detectHighValue(balanceChanges: BalanceChange[]): RiskWarning[] {
 }
 
 /**
+ * Detects incoming sub-dust SOL transfers commonly used in address-poisoning
+ * attacks, airdrop-based wallet profiling, and drainer bait.
+ *
+ * Converts the incoming SOL amount to lamports and delegates to
+ * `detectStandalonePoisoning` from the poisoning-detector module.
+ * Only fires on positive (incoming) SOL balance changes; outgoing amounts
+ * are ignored even when sub-dust.
+ */
+function detectDustSolReceipt(balanceChanges: BalanceChange[]): RiskWarning[] {
+  const solChange = balanceChanges.find(
+    (c) => c.mint === SOL_MINT && c.amount > 0,
+  );
+  if (!solChange) return [];
+
+  const lamports = solChange.amount * LAMPORTS_PER_SOL;
+  const result = detectStandalonePoisoning(lamports);
+  if (!result.detected) return [];
+
+  const baseDescription =
+    result.warning ??
+    "This looks like a sub-dust SOL deposit that may be used for address poisoning or wallet profiling. Do not copy the sender's address.";
+  const description = `${baseDescription} Amount: ${solChange.amount.toFixed(9).replace(/\.?0+$/, "")} SOL.`;
+
+  return [
+    {
+      severity: "warning",
+      title: "Sub-Dust Incoming Transfer",
+      description,
+    },
+  ];
+}
+
+/**
  * Detects transactions that move ≥ MULTI_ASSET_DRAIN_THRESHOLD distinct
  * tokens out of the user's wallet at once — a classic drainer signature.
  */
@@ -591,6 +625,7 @@ export function analyzeRisks(
   warnings.push(...detectDrainHeuristic(sim, balanceChanges, userPubkey, accountKeys));
   warnings.push(...detectMultiAssetDrain(balanceChanges));
   warnings.push(...detectHighValue(balanceChanges));
+  warnings.push(...detectDustSolReceipt(balanceChanges));
 
   // Fee-side detectors.
   warnings.push(...detectOversizedPriorityFee(feeInputs, unitsConsumed));
