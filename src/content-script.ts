@@ -43,8 +43,13 @@ window.addEventListener("message", async (event) => {
     return;
   }
 
-  const { id, tx, origin } = data as { id: string; tx: string; origin: string };
-  console.log("[SolDecode] content-script received SOLDECODE_SIMULATE, id:", id);
+  const { id, tx, origin, userPubkey } = data as {
+    id: string;
+    tx: string;
+    origin: string;
+    userPubkey?: string | null;
+  };
+  console.log("[SolDecode] content-script received SOLDECODE_SIMULATE, id:", id, "user:", userPubkey ?? "(unknown)");
 
   try {
     // Check whether the extension is enabled and has an RPC endpoint configured.
@@ -65,6 +70,7 @@ window.addEventListener("message", async (event) => {
       id,
       tx,
       origin,
+      userPubkey,
     }) as { type: string; preview?: unknown; error?: string } | undefined;
 
     if (response?.type === "SIMULATE_RESULT" && response.preview) {

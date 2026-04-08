@@ -106,14 +106,23 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === "SIMULATE") {
-    const { id, tx, origin } = message as { id: string; tx: string; origin: string };
+    const { id, tx, origin, userPubkey: providedPubkey } = message as {
+      id: string;
+      tx: string;
+      origin: string;
+      userPubkey?: string | null;
+    };
 
     (async () => {
       try {
         const simResult = await simulateTransaction(tx);
         const accountKeys = extractAccountKeys(tx);
-        // Reason: the fee payer is always the first account in a Solana transaction.
-        const userPubkey = accountKeys[0] ?? "";
+        // Prefer the wallet-provided pubkey: in gasless flows the on-chain
+        // fee payer is a relayer, not the user, so accountKeys[0] would
+        // resolve balance changes against the wrong account.
+        const userPubkey = providedPubkey && providedPubkey.length > 0
+          ? providedPubkey
+          : accountKeys[0] ?? "";
 
         const preview = await decodeSimulation(simResult, userPubkey, accountKeys, origin);
 

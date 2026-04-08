@@ -11,6 +11,47 @@ const pendingRequests = new Map<string, {
 }>();
 
 /**
+ * Last known connected wallet pubkey, captured whenever we wrap or call a
+ * provider. Used to tell the service worker which account "the user" is, so
+ * decoding works in gasless mode where the on-chain fee payer is a relayer.
+ */
+let lastKnownUserPubkey: string | null = null;
+
+/**
+ * Reads the connected wallet's pubkey from a legacy provider object.
+ * Phantom and most legacy adapters expose `provider.publicKey` as a PublicKey
+ * with a `toBase58()` method, but we accept any string-like form too.
+ */
+function readPubkeyFromProvider(provider: Record<string, unknown>): string | null {
+  try {
+    const pk = provider.publicKey as { toBase58?: () => string; toString?: () => string } | string | null | undefined;
+    if (!pk) return null;
+    if (typeof pk === "string") return pk;
+    if (typeof pk.toBase58 === "function") return pk.toBase58();
+    if (typeof pk.toString === "function") {
+      const s = pk.toString();
+      // Reason: PublicKey.toString() returns base58, but a plain {} returns "[object Object]".
+      if (s && s !== "[object Object]") return s;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+/**
+ * Reads the connected wallet's pubkey from a Wallet Standard wallet object,
+ * which exposes `wallet.accounts[0].address` as a base58 string.
+ */
+function readPubkeyFromStandardWallet(wallet: Record<string, unknown>): string | null {
+  try {
+    const accounts = wallet.accounts as Array<{ address?: string }> | undefined;
+    if (accounts && accounts.length > 0 && typeof accounts[0].address === "string") {
+      return accounts[0].address;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+/**
  * Generates a unique request ID.
  */
 function generateId(): string {
@@ -56,7 +97,7 @@ function serializeTransaction(tx: unknown): string | null {
  * Auto-proceeds after 30 seconds to avoid blocking the user indefinitely.
  * Returns "PROCEED" or "REJECT".
  */
-function requestSimulation(base64Tx: string): Promise<"PROCEED" | "REJECT"> {
+function requestSimulation(base64Tx: string, userPubkey: string | null): Promise<"PROCEED" | "REJECT"> {
   return new Promise((resolve) => {
     const id = generateId();
     pendingRequests.set(id, { resolve });
@@ -67,6 +108,7 @@ function requestSimulation(base64Tx: string): Promise<"PROCEED" | "REJECT"> {
         id,
         tx: base64Tx,
         origin: window.location.origin,
+        userPubkey,
       },
       "*",
     );
@@ -122,7 +164,9 @@ function patchProvider(provider: Record<string, unknown>): void {
       console.log("[SolDecode] intercepted signTransaction");
       const base64 = serializeTransaction(transaction);
       if (base64) {
-        const action = await requestSimulation(base64);
+        const pubkey = readPubkeyFromProvider(provider) ?? lastKnownUserPubkey;
+        if (pubkey) lastKnownUserPubkey = pubkey;
+        const action = await requestSimulation(base64, pubkey);
         if (action === "REJECT") {
           throw new Error("Transaction rejected by user via SolDecode");
         }
@@ -136,11 +180,17 @@ function patchProvider(provider: Record<string, unknown>): void {
   if (typeof provider.signAllTransactions === "function") {
     const original = (provider.signAllTransactions as Function).bind(provider);
     provider.signAllTransactions = async function (transactions: unknown[]) {
-      console.log("[SolDecode] intercepted signAllTransactions");
+      console.log(`[SolDecode] intercepted signAllTransactions (${transactions.length} txs)`);
       if (transactions.length > 0) {
-        const base64 = serializeTransaction(transactions[0]);
+        // Reason: in multi-tx batches the swap is almost always last; earlier txs
+        // are setup (wrap SOL, create ATA, etc). Previewing the last tx surfaces
+        // the meaningful balance changes the user actually cares about.
+        const target = transactions[transactions.length - 1];
+        const base64 = serializeTransaction(target);
         if (base64) {
-          const action = await requestSimulation(base64);
+          const pubkey = readPubkeyFromProvider(provider) ?? lastKnownUserPubkey;
+          if (pubkey) lastKnownUserPubkey = pubkey;
+          const action = await requestSimulation(base64, pubkey);
           if (action === "REJECT") {
             throw new Error("Transaction rejected by user via SolDecode");
           }
@@ -158,7 +208,9 @@ function patchProvider(provider: Record<string, unknown>): void {
       console.log("[SolDecode] intercepted signAndSendTransaction");
       const base64 = serializeTransaction(transaction);
       if (base64) {
-        const action = await requestSimulation(base64);
+        const pubkey = readPubkeyFromProvider(provider) ?? lastKnownUserPubkey;
+        if (pubkey) lastKnownUserPubkey = pubkey;
+        const action = await requestSimulation(base64, pubkey);
         if (action === "REJECT") {
           throw new Error("Transaction rejected by user via SolDecode");
         }
@@ -242,24 +294,30 @@ function install(): void {
 /**
  * Wraps a Wallet Standard feature method (like signTransaction).
  * The Wallet Standard passes transactions differently — as { transaction: Uint8Array } objects.
+ *
+ * @param wallet - The owning wallet object, used to read the connected account
+ *                 so we can pass the user's pubkey to the simulator.
  */
 function wrapStandardFeatureMethod(
   originalMethod: (...args: unknown[]) => Promise<unknown>,
   featureName: string,
+  wallet: Record<string, unknown>,
 ): (...args: unknown[]) => Promise<unknown> {
   return async function (...args: unknown[]): Promise<unknown> {
     console.log(`[SolDecode] intercepted Wallet Standard ${featureName}`);
 
-    // Wallet Standard passes an object with a `transaction` field (Uint8Array)
-    // For signAndSendTransaction: { transaction: Uint8Array, ... }
-    // For signTransaction: { transaction: Uint8Array, ... }
+    // Wallet Standard passes an object with a `transaction` field (Uint8Array).
+    // For signAllTransactions, the input shape is { transactions: [...] } — pick
+    // the LAST entry because the swap is almost always the final tx in a batch.
     const input = args[0] as Record<string, unknown> | undefined;
     let base64: string | null = null;
 
     if (input) {
-      // Try to find the transaction bytes
-      const txBytes = (input.transaction as Uint8Array) ??
-        ((input as { transactions?: Uint8Array[] }).transactions?.[0]);
+      const batched = (input as { transactions?: Uint8Array[] }).transactions;
+      const txBytes: Uint8Array | undefined =
+        batched && batched.length > 0
+          ? batched[batched.length - 1]
+          : (input.transaction as Uint8Array | undefined);
 
       if (txBytes instanceof Uint8Array) {
         let binary = "";
@@ -267,12 +325,17 @@ function wrapStandardFeatureMethod(
           binary += String.fromCharCode(txBytes[i]);
         }
         base64 = btoa(binary);
-        console.log(`[SolDecode] serialized from Wallet Standard: ${base64.length} chars`);
+        console.log(`[SolDecode] serialized from Wallet Standard: ${base64.length} chars${batched ? ` (last of ${batched.length})` : ""}`);
       }
     }
 
     if (base64) {
-      const action = await requestSimulation(base64);
+      // Reason: Wallet Standard requests sometimes carry the account in
+      // input.account; otherwise fall back to wallet.accounts[0].
+      const accountFromRequest = (input?.account as { address?: string } | undefined)?.address;
+      const pubkey = accountFromRequest ?? readPubkeyFromStandardWallet(wallet) ?? lastKnownUserPubkey;
+      if (pubkey) lastKnownUserPubkey = pubkey;
+      const action = await requestSimulation(base64, pubkey);
       if (action === "REJECT") {
         throw new Error("Transaction rejected by user via SolDecode");
       }
@@ -312,11 +375,16 @@ function wrapStandardWallet(wallet: Record<string, unknown>): Record<string, unk
   const features = wallet.features as Record<string, Record<string, unknown>> | undefined;
   if (!features) return wallet;
 
+  // Capture the connected pubkey now so later intercepts have a fallback even
+  // if the wallet's accounts array is mutated by the time signing happens.
+  const initialPubkey = readPubkeyFromStandardWallet(wallet);
+  if (initialPubkey) lastKnownUserPubkey = initialPubkey;
+
   // Intercept solana:signTransaction
   const signTxFeature = features["solana:signTransaction"];
   if (signTxFeature?.signTransaction && typeof signTxFeature.signTransaction === "function") {
     const original = signTxFeature.signTransaction as (...args: unknown[]) => Promise<unknown>;
-    const wrapped = wrapStandardFeatureMethod(original, "solana:signTransaction");
+    const wrapped = wrapStandardFeatureMethod(original, "solana:signTransaction", wallet);
 
     if (!forceSetProperty(signTxFeature, "signTransaction", wrapped)) {
       // Feature object is frozen — replace the entire feature entry
@@ -332,7 +400,7 @@ function wrapStandardWallet(wallet: Record<string, unknown>): Record<string, unk
   const signSendFeature = features["solana:signAndSendTransaction"];
   if (signSendFeature?.signAndSendTransaction && typeof signSendFeature.signAndSendTransaction === "function") {
     const original = signSendFeature.signAndSendTransaction as (...args: unknown[]) => Promise<unknown>;
-    const wrapped = wrapStandardFeatureMethod(original, "solana:signAndSendTransaction");
+    const wrapped = wrapStandardFeatureMethod(original, "solana:signAndSendTransaction", wallet);
 
     if (!forceSetProperty(signSendFeature, "signAndSendTransaction", wrapped)) {
       // Feature object is frozen — replace the entire feature entry
