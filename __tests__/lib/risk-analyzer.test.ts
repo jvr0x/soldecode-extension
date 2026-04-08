@@ -5,6 +5,7 @@ import type {
   BalanceChange,
   ParsedTransaction,
   ParsedInstruction,
+  TokenInfo,
 } from "@/types";
 import type { TxFeeInputs } from "@/lib/fee-calculator";
 
@@ -20,6 +21,30 @@ const ZERO_FEE_INPUTS: TxFeeInputs = {
   computeUnitPriceMicroLamports: 0,
   computeUnitLimit: null,
 };
+
+/** Empty token info map — used by structural-detector tests that don't need metadata. */
+const EMPTY_INFO_MAP = new Map<string, TokenInfo>();
+
+/**
+ * Builds a TokenInfo with the given overrides — defaults are "boring legit
+ * token" so individual fields can be flipped to a risky value per test.
+ */
+function makeTokenInfo(overrides: Partial<TokenInfo> = {}): TokenInfo {
+  return {
+    address: overrides.address ?? "MintXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    symbol: "TKN",
+    name: "Token",
+    decimals: 6,
+    logoURI: null,
+    mintAuthority: null,
+    freezeAuthority: null,
+    holderCount: 5000,
+    liquidity: 1_000_000,
+    mcap: 100_000_000,
+    usdPrice: 1,
+    ...overrides,
+  };
+}
 
 /** Builds an empty simulation result with the given balances. */
 function makeSim(overrides: Partial<SimulationResult> = {}): SimulationResult {
@@ -90,6 +115,7 @@ describe("analyzeRisks — baseline", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(risk).toBe("SAFE");
     expect(warnings).toEqual([]);
@@ -107,6 +133,7 @@ describe("analyzeRisks — baseline", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(risk).toBe("WARNING");
     expect(warnings.some((w) => w.title.toLowerCase().includes("high value"))).toBe(true);
@@ -124,6 +151,7 @@ describe("analyzeRisks — baseline", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(risk).toBe("SAFE");
   });
@@ -140,6 +168,7 @@ describe("detectUnlimitedApproval", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(risk).toBe("WARNING");
     expect(warnings[0].title).toContain("Unlimited");
@@ -156,6 +185,7 @@ describe("detectUnlimitedApproval", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(warnings.some((w) => w.title.includes("Unlimited"))).toBe(true);
   });
@@ -171,6 +201,7 @@ describe("detectUnlimitedApproval", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(warnings.some((w) => w.title.includes("Unlimited"))).toBe(false);
   });
@@ -189,6 +220,7 @@ describe("detectAccountOwnerHijack", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(warnings.some((w) => w.title.includes("Ownership"))).toBe(true);
   });
@@ -205,6 +237,7 @@ describe("detectAccountOwnerHijack", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(warnings.some((w) => w.title.includes("Ownership"))).toBe(false);
   });
@@ -222,6 +255,7 @@ describe("detectMintAuthorityChange", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     const mintWarning = warnings.find((w) => w.title.includes("Mint"));
     expect(mintWarning).toBeDefined();
@@ -239,6 +273,7 @@ describe("detectMintAuthorityChange", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(warnings.some((w) => w.title.includes("Freeze"))).toBe(true);
   });
@@ -259,6 +294,7 @@ describe("detectCloseAccountToOther", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(warnings.some((w) => w.title.includes("Foreign"))).toBe(true);
   });
@@ -277,6 +313,7 @@ describe("detectCloseAccountToOther", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(warnings.some((w) => w.title.includes("Foreign"))).toBe(false);
   });
@@ -312,6 +349,7 @@ describe("detectDrainHeuristic", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(warnings.some((w) => w.title.includes("Drain"))).toBe(true);
   });
@@ -345,6 +383,7 @@ describe("detectDrainHeuristic", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(warnings.some((w) => w.title.includes("Drain"))).toBe(false);
   });
@@ -362,6 +401,7 @@ describe("detectDrainHeuristic", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(warnings.some((w) => w.title.includes("SOL Drain"))).toBe(true);
   });
@@ -379,6 +419,7 @@ describe("detectDrainHeuristic", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(warnings.some((w) => w.title.includes("SOL Drain"))).toBe(false);
   });
@@ -400,6 +441,7 @@ describe("detectOversizedPriorityFee", () => {
       feeInputs,
       100_000_000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(warnings.some((w) => w.title.includes("Oversized Priority"))).toBe(true);
   });
@@ -418,6 +460,7 @@ describe("detectOversizedPriorityFee", () => {
       feeInputs,
       150_000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(warnings.some((w) => w.title.includes("Oversized Priority"))).toBe(false);
   });
@@ -438,6 +481,7 @@ describe("detectMultiAssetDrain", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(warnings.some((w) => w.title.includes("Multiple Assets"))).toBe(true);
   });
@@ -455,6 +499,7 @@ describe("detectMultiAssetDrain", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(warnings.some((w) => w.title.includes("Multiple Assets"))).toBe(false);
   });
@@ -471,6 +516,7 @@ describe("detectStakeAuthorize", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     const stakeWarning = warnings.find((w) => w.title.includes("Stake"));
     expect(stakeWarning).toBeDefined();
@@ -487,6 +533,7 @@ describe("detectStakeAuthorize", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(warnings.some((w) => w.title.includes("Stake"))).toBe(true);
   });
@@ -501,8 +548,357 @@ describe("detectStakeAuthorize", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     expect(warnings.some((w) => w.title.includes("Stake"))).toBe(false);
+  });
+});
+
+describe("detectActiveMintAuthority", () => {
+  it("warns when receiving a token with an active mint authority", () => {
+    const mint = "MintWithAuth111111111111111111111111111111";
+    const change: BalanceChange = {
+      mint, symbol: "RUG", name: "Rug Token", amount: 1000, decimals: 6, logoURI: null,
+    };
+    const map = new Map([[mint, makeTokenInfo({ address: mint, symbol: "RUG", mintAuthority: "AnyAuthorityXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" })]]);
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      [change],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      map,
+    );
+    expect(warnings.some((w) => w.title.includes("Mint Authority Active"))).toBe(true);
+  });
+
+  it("does not warn when the mint authority is null", () => {
+    const mint = "RenouncedMint111111111111111111111111111111";
+    const change: BalanceChange = {
+      mint, symbol: "OK", name: "Renounced", amount: 100, decimals: 6, logoURI: null,
+    };
+    const map = new Map([[mint, makeTokenInfo({ address: mint, mintAuthority: null })]]);
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      [change],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      map,
+    );
+    expect(warnings.some((w) => w.title.includes("Mint Authority Active"))).toBe(false);
+  });
+
+  it("ignores tokens the user is sending out", () => {
+    // Sending a mint-authority-active token away is not the user's risk; receiving it is.
+    const mint = "MintWithAuth111111111111111111111111111111";
+    const change: BalanceChange = {
+      mint, symbol: "RUG", name: "Rug Token", amount: -100, decimals: 6, logoURI: null,
+    };
+    const map = new Map([[mint, makeTokenInfo({ address: mint, mintAuthority: "Auth" })]]);
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      [change],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      map,
+    );
+    expect(warnings.some((w) => w.title.includes("Mint Authority Active"))).toBe(false);
+  });
+});
+
+describe("detectActiveFreezeAuthority", () => {
+  it("warns when receiving a token with an active freeze authority", () => {
+    const mint = "FreezeMint11111111111111111111111111111111";
+    const change: BalanceChange = {
+      mint, symbol: "FRZ", name: "Freeze Token", amount: 50, decimals: 6, logoURI: null,
+    };
+    const map = new Map([[mint, makeTokenInfo({ address: mint, symbol: "FRZ", freezeAuthority: "FreezerXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" })]]);
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      [change],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      map,
+    );
+    expect(warnings.some((w) => w.title.includes("Freeze Authority Active"))).toBe(true);
+  });
+
+  it("does not warn when freeze authority is null", () => {
+    const mint = "NoFreeze1111111111111111111111111111111111";
+    const change: BalanceChange = {
+      mint, symbol: "OK", name: "OK", amount: 50, decimals: 6, logoURI: null,
+    };
+    const map = new Map([[mint, makeTokenInfo({ address: mint, freezeAuthority: null })]]);
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      [change],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      map,
+    );
+    expect(warnings.some((w) => w.title.includes("Freeze Authority Active"))).toBe(false);
+  });
+});
+
+describe("detectLowLiquidity", () => {
+  it("flags tokens with liquidity below the threshold as critical", () => {
+    const mint = "LowLiq11111111111111111111111111111111111";
+    const change: BalanceChange = {
+      mint, symbol: "DUST", name: "Dust", amount: 1, decimals: 6, logoURI: null,
+    };
+    const map = new Map([[mint, makeTokenInfo({ address: mint, liquidity: 500 })]]);
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      [change],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      map,
+    );
+    const warning = warnings.find((w) => w.title.includes("Low Liquidity"));
+    expect(warning).toBeDefined();
+    expect(warning!.severity).toBe("critical");
+  });
+
+  it("does not flag tokens with healthy liquidity", () => {
+    const mint = "BigLiq11111111111111111111111111111111111";
+    const change: BalanceChange = {
+      mint, symbol: "BIG", name: "Big", amount: 1, decimals: 6, logoURI: null,
+    };
+    const map = new Map([[mint, makeTokenInfo({ address: mint, liquidity: 5_000_000 })]]);
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      [change],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      map,
+    );
+    expect(warnings.some((w) => w.title.includes("Low Liquidity"))).toBe(false);
+  });
+
+  it("skips when liquidity field is unknown", () => {
+    const mint = "Unknown111111111111111111111111111111111111";
+    const change: BalanceChange = {
+      mint, symbol: "X", name: "X", amount: 1, decimals: 6, logoURI: null,
+    };
+    const map = new Map([[mint, makeTokenInfo({ address: mint, liquidity: null })]]);
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      [change],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      map,
+    );
+    expect(warnings.some((w) => w.title.includes("Low Liquidity"))).toBe(false);
+  });
+});
+
+describe("detectFreshOrUnknownToken", () => {
+  it("warns on tokens with very few holders", () => {
+    const mint = "Fresh111111111111111111111111111111111111";
+    const change: BalanceChange = {
+      mint, symbol: "FRESH", name: "Fresh", amount: 1000, decimals: 6, logoURI: null,
+    };
+    const map = new Map([[mint, makeTokenInfo({ address: mint, holderCount: 12 })]]);
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      [change],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      map,
+    );
+    expect(warnings.some((w) => w.title.includes("Fresh Token"))).toBe(true);
+  });
+
+  it("warns on tokens not indexed by Jupiter at all", () => {
+    const mint = "Unknown111111111111111111111111111111111111";
+    const change: BalanceChange = {
+      mint, symbol: "Unkn...n111", name: "Unknown Token", amount: 1, decimals: 9, logoURI: null,
+    };
+    const map = new Map([[mint, makeTokenInfo({ address: mint, name: "Unknown Token", holderCount: null })]]);
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      [change],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      map,
+    );
+    expect(warnings.some((w) => w.title.includes("Unknown Token"))).toBe(true);
+  });
+
+  it("does not warn on well-established tokens", () => {
+    const mint = "Established11111111111111111111111111111111";
+    const change: BalanceChange = {
+      mint, symbol: "OK", name: "Established", amount: 100, decimals: 6, logoURI: null,
+    };
+    const map = new Map([[mint, makeTokenInfo({ address: mint, name: "Established", holderCount: 100_000 })]]);
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      [change],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      map,
+    );
+    expect(warnings.some((w) => w.title.includes("Fresh Token") || w.title.includes("Unknown Token"))).toBe(false);
+  });
+});
+
+describe("detectUsdValueAsymmetry", () => {
+  it("warns when outflow exceeds inflow by 2x", () => {
+    const mintOut = "OutMint11111111111111111111111111111111111";
+    const mintIn = "InMint111111111111111111111111111111111111";
+    const balanceChanges: BalanceChange[] = [
+      { mint: mintOut, symbol: "USDC", name: "USDC", amount: -100, decimals: 6, logoURI: null },
+      { mint: mintIn, symbol: "SCAM", name: "Scam", amount: 30, decimals: 6, logoURI: null },
+    ];
+    const map = new Map([
+      [mintOut, makeTokenInfo({ address: mintOut, usdPrice: 1 })],
+      [mintIn, makeTokenInfo({ address: mintIn, usdPrice: 1 })],
+    ]);
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      balanceChanges,
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      map,
+    );
+    const w = warnings.find((x) => x.title.includes("Asymmetry") || x.title.includes("Severe Value"));
+    expect(w).toBeDefined();
+  });
+
+  it("escalates to critical when outflow > 10x inflow", () => {
+    const mintOut = "OutMint11111111111111111111111111111111111";
+    const mintIn = "InMint111111111111111111111111111111111111";
+    const balanceChanges: BalanceChange[] = [
+      { mint: mintOut, symbol: "USDC", name: "USDC", amount: -100, decimals: 6, logoURI: null },
+      { mint: mintIn, symbol: "DUST", name: "Dust", amount: 5, decimals: 6, logoURI: null },
+    ];
+    const map = new Map([
+      [mintOut, makeTokenInfo({ address: mintOut, usdPrice: 1 })],
+      [mintIn, makeTokenInfo({ address: mintIn, usdPrice: 1 })],
+    ]);
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      balanceChanges,
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      map,
+    );
+    const critical = warnings.find((w) => w.severity === "critical" && w.title.includes("Severe Value"));
+    expect(critical).toBeDefined();
+  });
+
+  it("does not warn on a fair-priced swap with small slippage", () => {
+    const mintOut = "OutMint11111111111111111111111111111111111";
+    const mintIn = "InMint111111111111111111111111111111111111";
+    const balanceChanges: BalanceChange[] = [
+      { mint: mintOut, symbol: "USDC", name: "USDC", amount: -100, decimals: 6, logoURI: null },
+      { mint: mintIn, symbol: "SOL", name: "SOL", amount: 1, decimals: 9, logoURI: null },
+    ];
+    const map = new Map([
+      [mintOut, makeTokenInfo({ address: mintOut, usdPrice: 1 })],
+      [mintIn, makeTokenInfo({ address: mintIn, usdPrice: 99 })],
+    ]);
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      balanceChanges,
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      map,
+    );
+    expect(warnings.some((w) => w.title.includes("Asymmetry") || w.title.includes("Severe Value"))).toBe(false);
+  });
+
+  it("ignores SOL fee dust when computing the asymmetry ratio", () => {
+    // SOL change is just a tiny fee, not the actual swap input — should not break the calc.
+    const mintOut = "OutMint11111111111111111111111111111111111";
+    const mintIn = "InMint111111111111111111111111111111111111";
+    const balanceChanges: BalanceChange[] = [
+      { mint: SOL_MINT, symbol: "SOL", name: "SOL", amount: -0.002, decimals: 9, logoURI: null },
+      { mint: mintOut, symbol: "USDC", name: "USDC", amount: -100, decimals: 6, logoURI: null },
+      { mint: mintIn, symbol: "BTC", name: "BTC", amount: 0.0014, decimals: 8, logoURI: null },
+    ];
+    const map = new Map([
+      [SOL_MINT, makeTokenInfo({ address: SOL_MINT, usdPrice: 100 })],
+      [mintOut, makeTokenInfo({ address: mintOut, usdPrice: 1 })],
+      [mintIn, makeTokenInfo({ address: mintIn, usdPrice: 70_000 })],
+    ]);
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      balanceChanges,
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      map,
+    );
+    // 100 USDC out vs 0.0014 * 70000 = $98 in → ratio ~1.02, no warning.
+    expect(warnings.some((w) => w.title.includes("Asymmetry") || w.title.includes("Severe Value"))).toBe(false);
+  });
+
+  it("skips silently when neither side can be priced", () => {
+    const mintOut = "OutMint11111111111111111111111111111111111";
+    const mintIn = "InMint111111111111111111111111111111111111";
+    const balanceChanges: BalanceChange[] = [
+      { mint: mintOut, symbol: "X", name: "X", amount: -100, decimals: 6, logoURI: null },
+      { mint: mintIn, symbol: "Y", name: "Y", amount: 50, decimals: 6, logoURI: null },
+    ];
+    const map = new Map([
+      [mintOut, makeTokenInfo({ address: mintOut, usdPrice: null })],
+      [mintIn, makeTokenInfo({ address: mintIn, usdPrice: null })],
+    ]);
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      balanceChanges,
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      map,
+    );
+    expect(warnings.some((w) => w.title.includes("Asymmetry") || w.title.includes("Severe Value"))).toBe(false);
   });
 });
 
@@ -520,6 +916,7 @@ describe("warning aggregation", () => {
       ZERO_FEE_INPUTS,
       5000,
       [USER_PUBKEY],
+      EMPTY_INFO_MAP,
     );
     // Both "Unlimited Token Approval" and "High Value Transaction" should fire.
     expect(warnings.length).toBeGreaterThanOrEqual(2);

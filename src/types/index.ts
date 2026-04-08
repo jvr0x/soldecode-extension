@@ -49,7 +49,7 @@ export interface ErrorExplanation {
   rawError: string;
 }
 
-/** Token metadata. */
+/** Token metadata, enriched with the risk-relevant fields the Jupiter v2 search endpoint returns. */
 export interface TokenInfo {
   /** Mint address. */
   address: string;
@@ -61,6 +61,24 @@ export interface TokenInfo {
   decimals: number;
   /** Logo URL. */
   logoURI: string | null;
+  /**
+   * Mint authority pubkey, or null if renounced. A non-null value means
+   * the creator can still mint more of this token at any time.
+   */
+  mintAuthority: string | null;
+  /**
+   * Freeze authority pubkey, or null if renounced. A non-null value means
+   * the creator can freeze your token account, blocking transfers.
+   */
+  freezeAuthority: string | null;
+  /** Number of holders, when known. Used as a freshness/scam signal. */
+  holderCount: number | null;
+  /** USD-denominated liquidity depth across DEXes, when known. */
+  liquidity: number | null;
+  /** Market cap in USD, when known. */
+  mcap: number | null;
+  /** Spot USD price per whole token, when known. */
+  usdPrice: number | null;
 }
 
 /** The full simulation preview — the core data structure. */

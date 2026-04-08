@@ -49,15 +49,48 @@ beforeEach(() => {
 });
 
 describe("getTokenInfo", () => {
-  it("returns SOL constant without hitting the network", async () => {
-    const fetchSpy = vi.fn();
-    (globalThis as Record<string, unknown>).fetch = fetchSpy;
+  it("falls back to the canonical SOL constant when SOL lookup fails", async () => {
+    // Reason: SOL no longer short-circuits — it goes through the cache so
+    // its usdPrice is captured. When the network is down, the fallback path
+    // returns SOL_TOKEN so users still see "SOL" instead of a shortened mint.
+    (globalThis as Record<string, unknown>).fetch = vi.fn(async () => {
+      throw new Error("offline");
+    });
     const { getTokenInfo } = await freshTokenCache();
 
     const info = await getTokenInfo("So11111111111111111111111111111111111111112");
     expect(info.symbol).toBe("SOL");
+    expect(info.name).toBe("Solana");
     expect(info.decimals).toBe(9);
-    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("populates SOL with its real Jupiter fields when the network is up", async () => {
+    (globalThis as Record<string, unknown>).fetch = vi.fn(async () =>
+      new Response(
+        JSON.stringify([
+          {
+            id: "So11111111111111111111111111111111111111112",
+            name: "Wrapped SOL",
+            symbol: "SOL",
+            decimals: 9,
+            icon: "https://example.com/sol.png",
+            usdPrice: 142.5,
+            liquidity: 50_000_000,
+            holderCount: 5_000_000,
+            mcap: 80_000_000_000,
+            mintAuthority: null,
+            freezeAuthority: null,
+          },
+        ]),
+        { status: 200 },
+      ),
+    );
+    const { getTokenInfo } = await freshTokenCache();
+
+    const info = await getTokenInfo("So11111111111111111111111111111111111111112");
+    expect(info.symbol).toBe("SOL");
+    expect(info.usdPrice).toBe(142.5);
+    expect(info.liquidity).toBe(50_000_000);
   });
 
   it("fetches a mint from Jupiter and maps the response to TokenInfo", async () => {

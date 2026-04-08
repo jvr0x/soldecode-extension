@@ -4,8 +4,14 @@ import { SOL_TOKEN } from "./constants";
 /** Jupiter lite-api per-token search endpoint. Takes a mint in `query`. */
 const JUPITER_SEARCH_URL = "https://lite-api.jup.ag/tokens/v2/search";
 
-/** How long a cached lookup stays fresh. */
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+/**
+ * How long a cached lookup stays fresh. Shortened from 24h to 1h because
+ * the cache now stores volatile fields (usdPrice, liquidity, mcap, holderCount)
+ * alongside the mostly-static metadata. 1h is a fair balance: stale enough
+ * for cheap repeated lookups during a single trading session, fresh enough
+ * that price-based heuristics aren't acting on day-old numbers.
+ */
+const CACHE_TTL_MS = 60 * 60 * 1000;
 
 /** Shape of a single entry in the cache (value + timestamp for TTL). */
 interface CachedEntry {
@@ -15,7 +21,11 @@ interface CachedEntry {
   fetchedAt: number;
 }
 
-/** Relevant subset of the Jupiter /tokens/v2/search response object. */
+/**
+ * Relevant subset of the Jupiter /tokens/v2/search response object.
+ * The endpoint returns many more fields (mcap, fdv, stats5m, etc.) — we
+ * only capture what the risk analyzer or display code consumes.
+ */
 interface JupiterSearchToken {
   /** Mint address. */
   id: string;
@@ -27,6 +37,18 @@ interface JupiterSearchToken {
   decimals: number;
   /** Logo URL (new field name in v2). */
   icon?: string;
+  /** Mint authority pubkey or null if renounced. */
+  mintAuthority?: string | null;
+  /** Freeze authority pubkey or null if renounced. */
+  freezeAuthority?: string | null;
+  /** Number of distinct holders. */
+  holderCount?: number;
+  /** USD-denominated liquidity depth. */
+  liquidity?: number;
+  /** Market cap in USD. */
+  mcap?: number;
+  /** Spot USD price per whole token. */
+  usdPrice?: number;
 }
 
 /** In-memory cache keyed by mint. Survives within a service worker lifetime. */
@@ -96,20 +118,37 @@ async function fetchFromJupiter(mint: string): Promise<TokenInfo | null> {
       name: match.name,
       decimals: match.decimals,
       logoURI: match.icon ?? null,
+      mintAuthority: match.mintAuthority ?? null,
+      freezeAuthority: match.freezeAuthority ?? null,
+      holderCount: typeof match.holderCount === "number" ? match.holderCount : null,
+      liquidity: typeof match.liquidity === "number" ? match.liquidity : null,
+      mcap: typeof match.mcap === "number" ? match.mcap : null,
+      usdPrice: typeof match.usdPrice === "number" ? match.usdPrice : null,
     };
   } catch {
     return null;
   }
 }
 
-/** Builds the fallback TokenInfo used when a mint cannot be resolved. */
+/**
+ * Builds the fallback TokenInfo used when a mint cannot be resolved.
+ * SOL gets the canonical SOL_TOKEN constant so users see "SOL" instead of
+ * a shortened mint when the network is down.
+ */
 function fallbackTokenInfo(mint: string): TokenInfo {
+  if (mint === SOL_TOKEN.address) return SOL_TOKEN;
   return {
     address: mint,
     symbol: shortMint(mint),
     name: "Unknown Token",
     decimals: 9,
     logoURI: null,
+    mintAuthority: null,
+    freezeAuthority: null,
+    holderCount: null,
+    liquidity: null,
+    mcap: null,
+    usdPrice: null,
   };
 }
 
@@ -121,9 +160,10 @@ function fallbackTokenInfo(mint: string): TokenInfo {
  * same mint never hit the network twice within the window.
  */
 export async function getTokenInfo(mint: string): Promise<TokenInfo> {
-  // Reason: native SOL is a hard-coded constant, never fetch it.
-  if (mint === SOL_TOKEN.address) return SOL_TOKEN;
-
+  // Reason: previously SOL was short-circuited to the static SOL_TOKEN constant,
+  // but the cache now stores risk-relevant fields (usdPrice, etc.) that we want
+  // for SOL too. We let SOL flow through the same path; fallbackTokenInfo() still
+  // returns SOL_TOKEN when network lookups fail.
   await hydrateFromStorage();
 
   const cached = memoryCache.get(mint);

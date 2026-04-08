@@ -19,6 +19,7 @@ import type {
   RiskWarning,
   ParsedTransaction,
   ParsedInstruction,
+  TokenInfo,
 } from "@/types";
 import {
   SOL_MINT,
@@ -41,6 +42,21 @@ const DRAIN_WIPE_RATIO = 0.95;
 
 /** Minimum number of distinct outgoing tokens to trigger the multi-asset detector. */
 const MULTI_ASSET_DRAIN_THRESHOLD = 3;
+
+/** Tokens with USD liquidity below this threshold are flagged as illiquid. */
+const LOW_LIQUIDITY_USD_THRESHOLD = 10_000;
+
+/** Tokens with fewer holders than this are flagged as fresh / suspicious. */
+const FRESH_TOKEN_HOLDER_THRESHOLD = 100;
+
+/** Outgoing-to-incoming USD ratio that triggers a value-asymmetry warning. */
+const VALUE_ASYMMETRY_WARN_RATIO = 2;
+
+/** Outgoing-to-incoming USD ratio that escalates the asymmetry warning to critical. */
+const VALUE_ASYMMETRY_CRITICAL_RATIO = 10;
+
+/** Fee dust threshold (SOL) used to ignore fees in the USD asymmetry calculation. */
+const SOL_FEE_DUST_FOR_ASYMMETRY = 0.01;
 
 /** u64::MAX — what an "unlimited" SPL token Approve looks like on the wire. */
 const U64_MAX = (1n << 64n) - 1n;
@@ -309,6 +325,168 @@ function detectOversizedPriorityFee(
   return [];
 }
 
+/**
+ * Detects when the user is RECEIVING a token whose mint authority is still
+ * active. A non-null mint authority means the creator can issue more of the
+ * token at any time, diluting holders. Common in legit stablecoins (USDC,
+ * USDT) but also a hallmark of pump-and-dump tokens.
+ */
+function detectActiveMintAuthority(
+  balanceChanges: BalanceChange[],
+  tokenInfoMap: Map<string, TokenInfo>,
+): RiskWarning[] {
+  for (const change of balanceChanges) {
+    if (change.amount <= 0) continue;
+    const info = tokenInfoMap.get(change.mint);
+    if (!info || info.mintAuthority === null) continue;
+    return [
+      {
+        severity: "warning",
+        title: "Mint Authority Active",
+        description: `${info.symbol} has an active mint authority — the creator can issue more tokens at any time, diluting holders.`,
+      },
+    ];
+  }
+  return [];
+}
+
+/**
+ * Detects when the user is RECEIVING a token whose freeze authority is still
+ * active. The creator can freeze your token account and prevent you from
+ * moving the asset. Used by some compliant stablecoins, but also by scam
+ * tokens to lock victims out after a rug.
+ */
+function detectActiveFreezeAuthority(
+  balanceChanges: BalanceChange[],
+  tokenInfoMap: Map<string, TokenInfo>,
+): RiskWarning[] {
+  for (const change of balanceChanges) {
+    if (change.amount <= 0) continue;
+    const info = tokenInfoMap.get(change.mint);
+    if (!info || info.freezeAuthority === null) continue;
+    return [
+      {
+        severity: "warning",
+        title: "Freeze Authority Active",
+        description: `${info.symbol} has an active freeze authority — the creator can freeze your token account at any time, blocking transfers.`,
+      },
+    ];
+  }
+  return [];
+}
+
+/**
+ * Detects when the user is RECEIVING a token with USD liquidity below
+ * a threshold — meaning they may not be able to sell it back. Classic
+ * honeypot setup.
+ */
+function detectLowLiquidity(
+  balanceChanges: BalanceChange[],
+  tokenInfoMap: Map<string, TokenInfo>,
+): RiskWarning[] {
+  for (const change of balanceChanges) {
+    if (change.amount <= 0) continue;
+    const info = tokenInfoMap.get(change.mint);
+    if (!info || info.liquidity === null) continue;
+    if (info.liquidity < LOW_LIQUIDITY_USD_THRESHOLD) {
+      return [
+        {
+          severity: "critical",
+          title: "Low Liquidity Token",
+          description: `${info.symbol} has only $${info.liquidity.toFixed(0)} of liquidity across DEXes. You may not be able to sell it back. This is a common honeypot pattern.`,
+        },
+      ];
+    }
+  }
+  return [];
+}
+
+/**
+ * Detects when the user is RECEIVING a token with very few holders, or
+ * a token that isn't indexed by Jupiter at all. Either is a strong signal
+ * the token is fresh, untested, or possibly a scam.
+ */
+function detectFreshOrUnknownToken(
+  balanceChanges: BalanceChange[],
+  tokenInfoMap: Map<string, TokenInfo>,
+): RiskWarning[] {
+  for (const change of balanceChanges) {
+    if (change.amount <= 0) continue;
+    if (change.mint === SOL_MINT) continue;
+
+    const info = tokenInfoMap.get(change.mint);
+    // Reason: when Jupiter has no metadata at all, the cache returns the
+    // shortened-mint fallback with name === "Unknown Token". Treat that as a
+    // strong "fresh / untrusted" signal.
+    if (!info || info.name === "Unknown Token") {
+      return [
+        {
+          severity: "warning",
+          title: "Unknown Token",
+          description: `Receiving a token (${change.mint.slice(0, 4)}...${change.mint.slice(-4)}) that isn't indexed by Jupiter. This often means the token is fresh, untraded, or a scam.`,
+        },
+      ];
+    }
+    if (info.holderCount !== null && info.holderCount < FRESH_TOKEN_HOLDER_THRESHOLD) {
+      return [
+        {
+          severity: "warning",
+          title: "Fresh Token",
+          description: `${info.symbol} has only ${info.holderCount} holders. Tokens with very few holders are usually freshly minted and high-risk.`,
+        },
+      ];
+    }
+  }
+  return [];
+}
+
+/**
+ * Detects USD-value asymmetry between outgoing and incoming tokens. When
+ * a tx sends out far more value than it brings in, the user is being
+ * scammed (or signed a tx with crazy slippage).
+ *
+ * Filters SOL fee dust out of both sides so a small SOL fee doesn't get
+ * misread as the swap input.
+ */
+function detectUsdValueAsymmetry(
+  balanceChanges: BalanceChange[],
+  tokenInfoMap: Map<string, TokenInfo>,
+): RiskWarning[] {
+  let outUsd = 0;
+  let inUsd = 0;
+  let pricedAny = false;
+
+  for (const change of balanceChanges) {
+    if (
+      change.mint === SOL_MINT &&
+      Math.abs(change.amount) < SOL_FEE_DUST_FOR_ASYMMETRY
+    ) {
+      continue;
+    }
+    const info = tokenInfoMap.get(change.mint);
+    if (!info || info.usdPrice === null || info.usdPrice <= 0) continue;
+    pricedAny = true;
+    const usd = Math.abs(change.amount) * info.usdPrice;
+    if (change.amount < 0) outUsd += usd;
+    else inUsd += usd;
+  }
+
+  // Reason: if we couldn't price either side, asymmetry is meaningless.
+  if (!pricedAny || outUsd === 0 || inUsd === 0) return [];
+  const ratio = outUsd / inUsd;
+  if (ratio < VALUE_ASYMMETRY_WARN_RATIO) return [];
+
+  const severity: RiskWarning["severity"] =
+    ratio >= VALUE_ASYMMETRY_CRITICAL_RATIO ? "critical" : "warning";
+  return [
+    {
+      severity,
+      title: severity === "critical" ? "Severe Value Loss" : "Value Asymmetry",
+      description: `This transaction sends ~$${outUsd.toFixed(2)} of value out of your wallet but brings only ~$${inUsd.toFixed(2)} back in (${ratio.toFixed(1)}× asymmetry). Verify the swap rate is what you expect.`,
+    },
+  ];
+}
+
 /** Detects high-value outgoing SOL transfers exceeding the threshold. */
 function detectHighValue(balanceChanges: BalanceChange[]): RiskWarning[] {
   const solChange = balanceChanges.find((c) => c.mint === SOL_MINT);
@@ -386,6 +564,9 @@ function detectStakeAuthorize(parsed: ParsedTransaction): RiskWarning[] {
  * @param feeInputs - Compute budget settings parsed from the tx (for fee-based detectors).
  * @param unitsConsumed - CU consumed by the simulation (for fee-based detectors).
  * @param accountKeys - Ordered account keys (for SOL-side drain detection).
+ * @param tokenInfoMap - Resolved TokenInfo for every mint in balanceChanges.
+ *                       Powers the metadata-driven detectors (mint authority,
+ *                       freeze authority, liquidity, holder count, USD asymmetry).
  */
 export function analyzeRisks(
   sim: SimulationResult,
@@ -395,18 +576,31 @@ export function analyzeRisks(
   feeInputs: TxFeeInputs,
   unitsConsumed: number,
   accountKeys: string[],
+  tokenInfoMap: Map<string, TokenInfo>,
 ): { risk: RiskLevel; warnings: RiskWarning[] } {
   const warnings: RiskWarning[] = [];
 
+  // Instruction-level structural detectors.
   warnings.push(...detectUnlimitedApproval(parsed));
   warnings.push(...detectAccountOwnerHijack(parsed, userPubkey));
   warnings.push(...detectMintAuthorityChange(parsed));
   warnings.push(...detectCloseAccountToOther(parsed, userPubkey));
   warnings.push(...detectStakeAuthorize(parsed));
+
+  // Balance-side detectors.
   warnings.push(...detectDrainHeuristic(sim, balanceChanges, userPubkey, accountKeys));
   warnings.push(...detectMultiAssetDrain(balanceChanges));
-  warnings.push(...detectOversizedPriorityFee(feeInputs, unitsConsumed));
   warnings.push(...detectHighValue(balanceChanges));
+
+  // Fee-side detectors.
+  warnings.push(...detectOversizedPriorityFee(feeInputs, unitsConsumed));
+
+  // Token-metadata-driven detectors (Phase A + B).
+  warnings.push(...detectActiveMintAuthority(balanceChanges, tokenInfoMap));
+  warnings.push(...detectActiveFreezeAuthority(balanceChanges, tokenInfoMap));
+  warnings.push(...detectLowLiquidity(balanceChanges, tokenInfoMap));
+  warnings.push(...detectFreshOrUnknownToken(balanceChanges, tokenInfoMap));
+  warnings.push(...detectUsdValueAsymmetry(balanceChanges, tokenInfoMap));
 
   // Reason: any warning escalates risk to WARNING; DANGER is reserved for failed sims.
   const risk: RiskLevel = warnings.length > 0 ? "WARNING" : "SAFE";

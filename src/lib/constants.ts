@@ -69,11 +69,18 @@ export const KNOWN_PROGRAMS: Record<string, string> = {
 /** Default Helius RPC endpoint (user provides their own key). */
 export const DEFAULT_RPC_ENDPOINT = "https://mainnet.helius-rpc.com/?api-key=";
 
-/** SOL token info for display. */
+/** SOL token info for display. Used as the fallback when network lookups fail. */
 export const SOL_TOKEN: TokenInfo = {
   address: SOL_MINT,
   symbol: "SOL",
   name: "Solana",
   decimals: 9,
   logoURI: null,
+  // Reason: SOL has no mint/freeze authority and is the canonical safe asset.
+  mintAuthority: null,
+  freezeAuthority: null,
+  holderCount: null,
+  liquidity: null,
+  mcap: null,
+  usdPrice: null,
 };

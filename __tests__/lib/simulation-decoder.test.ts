@@ -3,18 +3,27 @@ import { decodeSimulation } from "@/lib/simulation-decoder";
 import type { SimulationResult } from "@/types";
 
 // Mock token-cache to avoid network calls in tests.
+// Returns enriched TokenInfo so the metadata-driven risk detectors don't
+// false-positive on SAFE fixtures.
 vi.mock("@/lib/token-cache", () => ({
   getTokenInfo: vi.fn(async (mint: string) => {
-    const tokens: Record<
-      string,
-      { address: string; symbol: string; name: string; decimals: number; logoURI: null }
-    > = {
+    const base = {
+      mintAuthority: null,
+      freezeAuthority: null,
+      holderCount: 1_000_000,
+      liquidity: 10_000_000,
+      mcap: 100_000_000,
+      usdPrice: 1,
+    };
+    const tokens: Record<string, unknown> = {
       So11111111111111111111111111111111111111112: {
         address: "So11111111111111111111111111111111111111112",
         symbol: "SOL",
         name: "Solana",
         decimals: 9,
         logoURI: null,
+        ...base,
+        usdPrice: 100,
       },
       EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: {
         address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
@@ -22,6 +31,7 @@ vi.mock("@/lib/token-cache", () => ({
         name: "USD Coin",
         decimals: 6,
         logoURI: null,
+        ...base,
       },
     };
     return (
@@ -31,6 +41,7 @@ vi.mock("@/lib/token-cache", () => ({
         name: "Unknown",
         decimals: 9,
         logoURI: null,
+        ...base,
       }
     );
   }),

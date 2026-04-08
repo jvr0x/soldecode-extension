@@ -5,6 +5,7 @@ import type {
   PreviewStep,
   RiskLevel,
   ParsedTransaction,
+  TokenInfo,
 } from "@/types";
 import { getTokenInfo } from "./token-cache";
 import { mapError } from "./error-mapper";
@@ -302,6 +303,17 @@ export async function decodeSimulation(
   // Parse top-level program invocations from logs into step descriptions.
   const steps = parseInstructionLogs(sim.logs ?? []);
 
+  // Build a token-info map for every mint we're surfacing in the UI. The
+  // risk analyzer uses these enriched fields (mintAuthority, freezeAuthority,
+  // liquidity, holderCount, usdPrice) for the metadata-driven detectors.
+  // SOL is included so the price is available for USD-asymmetry math.
+  const tokenInfoMap = new Map<string, TokenInfo>();
+  for (const change of balanceChanges) {
+    if (!tokenInfoMap.has(change.mint)) {
+      tokenInfoMap.set(change.mint, await getTokenInfo(change.mint));
+    }
+  }
+
   // Risk analysis: structural detectors over the parsed instruction list,
   // plus fee-side and balance-side heuristics.
   const feeInputs = getFeeInputs(parsed);
@@ -313,6 +325,7 @@ export async function decodeSimulation(
     feeInputs,
     sim.unitsConsumed,
     accountKeys,
+    tokenInfoMap,
   );
 
   // Detect error source from logs to enable program-specific error mapping.
