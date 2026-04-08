@@ -5,12 +5,14 @@ A Chrome extension that shows you what a Solana transaction will do **before you
 When a dApp asks you to sign a transaction, SolDecode intercepts the request, simulates the transaction on-chain, and shows a human-readable preview with balance changes, risk warnings, and step-by-step breakdown — all before the Phantom popup appears.
 
 <p align="center">
-  <img src="assets/screenshots/kamino-preview.png" alt="Kamino preview" height="360">
+  <img src="assets/screenshots/jupiter-preview.png" alt="Jupiter swap with plain-English step list" height="380">
   &nbsp;&nbsp;
-  <img src="assets/screenshots/jupiter-preview.png" alt="Jupiter preview" height="360">
+  <img src="assets/screenshots/kamino-preview.png" alt="Kamino send with token symbol resolution" height="380">
   &nbsp;&nbsp;
-  <img src="assets/screenshots/raydium-preview.png" alt="Raydium preview" height="360">
+  <img src="assets/screenshots/marginfi-preview.png" alt="MarginFi failing transaction with error explanation" height="380">
 </p>
+
+> Above: a Jupiter swap (USDC → cbBTC) with the new "What Will Happen" plain-English summary, a Kamino send showing token symbols + shortened mint addresses, and a MarginFi transaction that would fail — caught and explained before reaching the wallet.
 
 ## How It Works
 
@@ -20,12 +22,21 @@ When a dApp asks you to sign a transaction, SolDecode intercepts the request, si
 
 3. **Decoding** — The simulation result (pre/post balances, token balances, program logs) is decoded into a human-readable preview: what tokens move, which programs execute, and what the net effect on your wallet will be.
 
-4. **Risk Analysis** — The extension checks for dangerous patterns:
-   - Token approvals (programs requesting permission to spend your tokens)
-   - High-value outgoing transfers (> 10 SOL)
-   - Simulation failures (the transaction would fail if submitted)
+4. **Risk Analysis** — The extension parses every top-level instruction structurally (no log scraping) and checks for malicious patterns commonly used by wallet drainers and rug pulls:
+   - **Unlimited token approvals** — `Approve` / `ApproveChecked` with `amount == u64::MAX`
+   - **Account ownership hijacks** — `SetAuthority` changing the owner of one of your token accounts
+   - **Mint / freeze authority changes** — `SetAuthority` on a mint
+   - **Drain heuristic** — any token wipe ≥ 95% of pre-balance, or SOL wipe ≥ 95% on meaningful balances
+   - **Multi-asset outflow** — three or more distinct tokens leaving your wallet at once
+   - **Foreign-account close** — `CloseAccount` whose rent destination isn't your wallet
+   - **Stake authority transfer** — Stake Program `Authorize` / `AuthorizeChecked`
+   - **Oversized priority fees** — priority fees ≥ 0.05 SOL (drain via fee mechanism)
+   - **High-value outgoing transfers** (> 10 SOL)
+   - **Simulation failures** — the transaction would fail if submitted
 
-5. **Preview Drawer** — A slide-in panel appears alongside the Phantom popup showing the decoded preview. You click **Proceed** to continue to Phantom, or **Reject** to cancel the transaction.
+5. **Plain-English Preview** — The drawer shows a "What Will Happen" section with natural-language bullets ("Swap 1 USDC for ~0.000014 cbBTC via Jupiter", "Create a cbBTC token account in your wallet (one-time setup)", "Pay ~0.002 SOL in network fees & rent") instead of just raw program names. Tokens are resolved to symbols via the Jupiter token API and displayed alongside their shortened mint address. The technical instruction breakdown is still available in a secondary "Instructions" section.
+
+6. **Preview Drawer** — A slide-in panel appears alongside the Phantom popup showing the decoded preview. You click **Proceed** to continue to Phantom, or **Reject** to cancel the transaction.
 
 ## Architecture
 
@@ -67,10 +78,13 @@ When a dApp asks you to sign a transaction, SolDecode intercepts the request, si
 
 | File | Context | Responsibility |
 |------|---------|----------------|
-| `inject.ts` | Page (Main World) | Patches `window.phantom.solana` methods in-place, intercepts Wallet Standard registrations, serializes transactions |
+| `inject.ts` | Page (Main World) | Patches `window.phantom.solana` methods in-place, intercepts Wallet Standard registrations, serializes transactions, and forwards the connected wallet pubkey so gasless / multi-tx flows decode correctly |
 | `content-script.ts` | Isolated World | Bridges messages between inject.ts and service worker, injects Shadow DOM drawer |
-| `service-worker.ts` | Background | Calls `simulateTransaction` RPC, decodes results, runs risk analysis |
-| `ui/drawer.ts` | Shadow DOM | Renders the preview panel with balance changes, steps, and action buttons |
+| `service-worker.ts` | Background | Calls `simulateTransaction` RPC, parses the tx once via `tx-parser`, computes the real fee, and runs the decoder + risk analyzer |
+| `lib/tx-parser.ts` | Background | Parses base64 Solana transactions (legacy + v0) into structured account keys + top-level instructions |
+| `lib/fee-calculator.ts` | Background | Computes the actual fee from `Compute Budget` instructions + signature count + simulated CU usage |
+| `lib/risk-analyzer.ts` | Background | Structural detectors for drainer / rug patterns (see Risk Analysis above) |
+| `ui/drawer.ts` | Shadow DOM | Renders the preview panel with balance changes, plain-English steps, technical instructions, and action buttons |
 | `popup/` | Extension Popup | Settings UI: enable/disable toggle, Helius RPC endpoint configuration |
 
 ### Why Monkey-Patching?
@@ -125,9 +139,12 @@ npm run build
 
 The extension uses Vitest for unit tests covering:
 
-- **Simulation decoder** — Verifies balance diff parsing from mock RPC responses
+- **Tx parser** — Verifies legacy + v0 message parsing, account-index resolution, instruction-data preservation
+- **Fee calculator** — Verifies base + priority fee math against hand-crafted Compute Budget fixtures
+- **Token cache** — Verifies Jupiter lookup, fallback handling, in-flight dedupe, persistence to `chrome.storage`
+- **Simulation decoder** — Verifies balance diff parsing, plain-English step generation, SOL fee dust filtering
 - **Instruction parser** — Verifies program log extraction and name resolution
-- **Risk analyzer** — Verifies token approval detection and high-value warnings
+- **Risk analyzer** — Verifies every detector (unlimited approval, account hijack, mint authority, drain, multi-asset, close-to-other, stake authorize, oversized priority fee, high value)
 - **Error mapper** — Verifies Solana error code to human-readable explanation mapping
 
 ```bash
@@ -140,13 +157,20 @@ npm test
 
 Other wallets (Solflare, Backpack, Brave Wallet) are not yet supported.
 
+### Gasless / Multi-Transaction Flows
+
+SolDecode handles dApps that route through a relayer (Jupiter Ultra Gasless) or sign multiple transactions at once. The injection layer reads the connected wallet's pubkey directly from the provider so balance changes are decoded against the **user's** account, not the relayer's. For `signAllTransactions` batches, the **last** transaction in the batch is previewed (this is almost always the meaningful swap; earlier txs are setup like wrap-SOL or ATA creation).
+
 ## Supported Transaction Types
 
 The decoder shows balance changes for any transaction. Program-specific decoding is available for:
 
 - Token swaps (Jupiter, Raydium, Orca, Pump.fun, Meteora)
 - SOL and SPL token transfers
-- Token approvals (flagged as warnings)
+- Token approvals (flagged as warnings; unlimited approvals flagged as critical)
+- SetAuthority operations (account hijacks, mint authority changes)
+- Stake Program authority transfers
+- CloseAccount with foreign rent destinations
 
 Unsupported transaction types still show raw balance diffs and program names.
 
