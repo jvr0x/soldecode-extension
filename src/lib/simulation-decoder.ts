@@ -2,13 +2,20 @@ import type {
   SimulationResult,
   SimulatedPreview,
   BalanceChange,
+  PreviewStep,
   RiskLevel,
 } from "@/types";
 import { getTokenInfo } from "./token-cache";
 import { mapError } from "./error-mapper";
 import { parseInstructionLogs } from "./instruction-parser";
 import { analyzeRisks } from "./risk-analyzer";
-import { SOL_MINT, LAMPORTS_PER_SOL } from "./constants";
+import {
+  SOL_MINT,
+  LAMPORTS_PER_SOL,
+  SOL_FEE_DUST_THRESHOLD,
+  ATA_PROGRAM_ID,
+  SWAP_VENUE_NAMES,
+} from "./constants";
 
 /**
  * Computes the net SOL balance change for the user's main account.
@@ -122,6 +129,101 @@ function detectErrorSource(logs: string[]): string | undefined {
 }
 
 /**
+ * Formats an amount for the one-line summary: trims trailing zeros and
+ * caps precision at 6 decimals so long floats don't overflow the header.
+ */
+function formatSummaryAmount(amount: number): string {
+  const abs = Math.abs(amount);
+  const fixed = abs.toFixed(6);
+  // Reason: strip trailing zeros and any dangling decimal point for readability.
+  return fixed.replace(/\.?0+$/, "") || "0";
+}
+
+/**
+ * Walks the technical step list and returns the first known swap-venue
+ * name (e.g. "Jupiter") if any of the called programs is a known DEX/router.
+ */
+function detectSwapVenue(steps: PreviewStep[]): string | null {
+  for (const step of steps) {
+    if (step.program && SWAP_VENUE_NAMES[step.program]) {
+      return SWAP_VENUE_NAMES[step.program];
+    }
+  }
+  return null;
+}
+
+/**
+ * Builds 1–3 plain-English bullets describing what the transaction will do,
+ * meant for the "What Will Happen" section. Pulls signal from balance changes
+ * (the dominant action) and the technical step list (setup work like ATA
+ * creation, swap venue identification).
+ *
+ * Falls back to a generic "Execute transaction" line when no clear pattern
+ * emerges so the section is never empty.
+ */
+function buildPlainSteps(
+  balanceChanges: BalanceChange[],
+  steps: PreviewStep[],
+  failed: boolean,
+): string[] {
+  if (failed) return ["Transaction would fail — see error above."];
+
+  const result: string[] = [];
+  const significant = balanceChanges.filter((c) => !isSolFeeDust(c));
+  const outgoing = significant.filter((c) => c.amount < 0);
+  const incoming = significant.filter((c) => c.amount > 0);
+
+  // Setup: an ATA program invocation almost always means we're creating a
+  // token account for the asset the user is about to receive.
+  const hasAtaSetup = steps.some((s) => s.program === ATA_PROGRAM_ID);
+  if (hasAtaSetup && incoming.length > 0) {
+    result.push(
+      `Create a ${incoming[0].symbol} token account in your wallet (one-time setup)`,
+    );
+  }
+
+  const venue = detectSwapVenue(steps);
+  const venueSuffix = venue ? ` via ${venue}` : "";
+
+  if (outgoing.length > 0 && incoming.length > 0) {
+    const out = outgoing[0];
+    const inc = incoming[0];
+    result.push(
+      `Swap ${formatSummaryAmount(out.amount)} ${out.symbol} for ~${formatSummaryAmount(inc.amount)} ${inc.symbol}${venueSuffix}`,
+    );
+  } else if (outgoing.length > 0) {
+    const out = outgoing[0];
+    result.push(`Send ${formatSummaryAmount(out.amount)} ${out.symbol} from your wallet`);
+  } else if (incoming.length > 0) {
+    const inc = incoming[0];
+    result.push(`Receive ${formatSummaryAmount(inc.amount)} ${inc.symbol} into your wallet`);
+  }
+
+  // Always show the SOL cost line if it's non-trivial — users care about fees.
+  const solChange = balanceChanges.find((c) => c.mint === SOL_MINT);
+  if (solChange && solChange.amount < 0 && Math.abs(solChange.amount) >= 0.0001) {
+    result.push(`Pay ~${formatSummaryAmount(solChange.amount)} SOL in network fees & rent`);
+  }
+
+  if (result.length === 0) {
+    result.push("Execute transaction (no balance changes detected)");
+  }
+  return result;
+}
+
+/**
+ * Returns true when a balance change looks like SOL fee/rent dust rather
+ * than the actual asset being swapped or transferred.
+ *
+ * Reason: Jupiter swaps consume ~0.002–0.005 SOL in fees + ATA rent. If we
+ * don't filter this out, "Swap 1 USDC for 0.000014 cbBTC" gets summarized as
+ * "Swap 0.002 SOL for 0.000014 cbBTC" because SOL is the first outgoing entry.
+ */
+function isSolFeeDust(change: BalanceChange): boolean {
+  return change.mint === SOL_MINT && Math.abs(change.amount) < SOL_FEE_DUST_THRESHOLD;
+}
+
+/**
  * Generates a one-line plain-English summary from balance changes.
  * Falls back to generic descriptions when the pattern is unclear.
  */
@@ -129,21 +231,27 @@ function buildSummary(balanceChanges: BalanceChange[], failed: boolean): string 
   if (failed) return "This transaction would fail if submitted now.";
   if (balanceChanges.length === 0) return "No balance changes detected.";
 
-  const outgoing = balanceChanges.filter((c) => c.amount < 0);
-  const incoming = balanceChanges.filter((c) => c.amount > 0);
+  // Strip SOL fee dust so it never gets picked as the swap input/output.
+  // Reason: if EVERY change is dust we still want the summary to fall back
+  // to the unfiltered list so we don't say "no balance changes."
+  const significant = balanceChanges.filter((c) => !isSolFeeDust(c));
+  const pool = significant.length > 0 ? significant : balanceChanges;
+
+  const outgoing = pool.filter((c) => c.amount < 0);
+  const incoming = pool.filter((c) => c.amount > 0);
 
   if (outgoing.length > 0 && incoming.length > 0) {
     const out = outgoing[0];
     const inc = incoming[0];
-    return `Swap ${Math.abs(out.amount)} ${out.symbol} for ${inc.amount} ${inc.symbol}`;
+    return `Swap ${formatSummaryAmount(out.amount)} ${out.symbol} for ${formatSummaryAmount(inc.amount)} ${inc.symbol}`;
   }
   if (outgoing.length > 0) {
     const out = outgoing[0];
-    return `Send ${Math.abs(out.amount)} ${out.symbol}`;
+    return `Send ${formatSummaryAmount(out.amount)} ${out.symbol}`;
   }
   if (incoming.length > 0) {
     const inc = incoming[0];
-    return `Receive ${inc.amount} ${inc.symbol}`;
+    return `Receive ${formatSummaryAmount(inc.amount)} ${inc.symbol}`;
   }
   return "Transaction processed.";
 }
@@ -201,6 +309,7 @@ export async function decodeSimulation(
   const finalRisk: RiskLevel = failed ? "DANGER" : risk;
 
   const summary = buildSummary(balanceChanges, failed);
+  const plainSteps = buildPlainSteps(balanceChanges, steps, failed);
 
   // Rough fee estimate: unitsConsumed * base fee per CU (1 lamport/CU = 1e-9 SOL/CU).
   const estimatedFee = sim.unitsConsumed * 0.000000001;
@@ -209,6 +318,7 @@ export async function decodeSimulation(
     risk: finalRisk,
     summary,
     balanceChanges,
+    plainSteps,
     steps,
     warnings,
     error,

@@ -71,7 +71,9 @@ export interface SimulatedPreview {
   summary: string;
   /** Balance changes for the user's wallet. */
   balanceChanges: BalanceChange[];
-  /** Step-by-step breakdown. */
+  /** Plain-English bullets shown under "What Will Happen". */
+  plainSteps: string[];
+  /** Technical instruction breakdown shown under "Instructions". */
   steps: PreviewStep[];
   /** Risk warnings (empty if SAFE). */
   warnings: RiskWarning[];
