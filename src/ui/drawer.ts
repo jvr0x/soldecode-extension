@@ -162,8 +162,14 @@ function buildDrawerHTML(preview: SimulatedPreview): string {
     html += `</div>`;
   }
 
-  // Fee and compute unit info — origin is highlighted so the user can spot the dApp at a glance.
-  html += `<div class="fee-text">Est. fee: ~${preview.estimatedFee.toFixed(6)} SOL · CU: ${preview.computeUnits.toLocaleString()} · <span class="fee-origin">${escapeHtml(preview.origin)}</span></div>`;
+  // Fee and compute unit info. Origin sits on its own line so long dApp URLs
+  // don't wrap mid-word and obscure the host name.
+  html += `
+    <div class="fee-text">
+      <div>Est. fee: ~${preview.estimatedFee.toFixed(6)} SOL · CU: ${preview.computeUnits.toLocaleString()}</div>
+      <div class="fee-origin">${escapeHtml(preview.origin)}</div>
+    </div>
+  `;
 
   // Action buttons — color-coded by risk level
   html += buildActionButtons(preview.risk);

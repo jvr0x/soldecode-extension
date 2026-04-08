@@ -177,14 +177,17 @@
 .fee-text {
   color: #888;
   font-size: 11px;
-  line-height: 1.4;
+  line-height: 1.5;
   margin-bottom: 12px;
-  word-break: break-all;
 }
 
 .fee-origin {
   color: #00d4aa;
   font-weight: 600;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .actions {
