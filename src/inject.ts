@@ -347,7 +347,13 @@ function wrapStandardFeatureMethod(
 
 /**
  * Replaces a property on a potentially frozen object.
- * Tries direct assignment first, then Object.defineProperty, then returns false.
+ * Tries direct assignment first, then Object.defineProperty.
+ *
+ * Verifies the write actually took effect via normal property access after
+ * each attempt — critical because Proxy-based feature objects may accept
+ * defineProperty silently while their `get` trap keeps returning the original
+ * value (observed on Jupiter Wallet). Without this verification, callers
+ * think the write succeeded when it didn't.
  */
 function forceSetProperty(obj: Record<string, unknown>, key: string, value: unknown): boolean {
   // Try direct assignment
@@ -359,7 +365,10 @@ function forceSetProperty(obj: Record<string, unknown>, key: string, value: unkn
   // Try defineProperty (works even on frozen objects if the property is configurable)
   try {
     Object.defineProperty(obj, key, { value, writable: true, configurable: true });
-    return true;
+    // Reason: a Proxy with a lying `get` trap (seen on Jupiter Wallet) can
+    // accept defineProperty without throwing while still serving the original.
+    // Read back through normal property access to confirm the write is observable.
+    if (obj[key] === value) return true;
   } catch { /* non-configurable */ }
 
   return false;
@@ -367,7 +376,8 @@ function forceSetProperty(obj: Record<string, unknown>, key: string, value: unkn
 
 /**
  * Wraps a Wallet Standard wallet object's signing features with our interception.
- * Handles frozen feature objects by replacing them on the wallet.features map.
+ * Handles frozen and Proxy-backed feature objects via a three-strategy approach:
+ * in-place mutation, entry replacement, and a wallet.features Proxy.
  */
 function wrapStandardWallet(wallet: Record<string, unknown>): Record<string, unknown> {
   if ((wallet as any).__soldecodeWrapped) return wallet;
@@ -380,63 +390,109 @@ function wrapStandardWallet(wallet: Record<string, unknown>): Record<string, unk
   const initialPubkey = readPubkeyFromStandardWallet(wallet);
   if (initialPubkey) lastKnownUserPubkey = initialPubkey;
 
-  // --- Phase 1 discovery instrumentation (temporary — remove in Task 4) ---
-  // Reason: wrapped in try/catch as a whole because instrumentAllSolanaFeatures
-  // walks wallet-provided Proxy objects whose traps could throw; we must not
-  // short-circuit the real signTransaction / signAndSendTransaction wraps below.
   const walletName = (wallet as { name?: string }).name ?? "unknown";
+
+  // Log the feature surface the wallet registered with — useful diagnostic
+  // for triaging future "we wrapped it but it didn't fire" bug reports.
   try {
     const featureKeys = Object.keys(features);
     console.log(`[SolDecode] ${walletName} features: ${featureKeys.join(", ")}`);
-    instrumentAllSolanaFeatures(features, walletName);
+  } catch { /* ignore */ }
+
+  /**
+   * Builds a wrapped feature object for one of the three sign-related features.
+   * Tries in-place mutation + clone-and-replace as a best-effort, but always
+   * returns a wrapped feature object ready to be served by the wallet.features
+   * Proxy installed below. Returns null if the feature doesn't exist on this
+   * wallet or its method isn't a function.
+   */
+  const buildWrappedFeature = (
+    featureKey: string,
+    methodKey: string,
+  ): Record<string, unknown> | null => {
+    const feature = features[featureKey];
+    if (!feature || typeof feature !== "object") return null;
+    const original = feature[methodKey];
+    if (typeof original !== "function") return null;
+
+    const wrapped = wrapStandardFeatureMethod(
+      original as (...args: unknown[]) => Promise<unknown>,
+      featureKey,
+      wallet,
+    );
+
+    // Strategy 1: in-place mutation of the feature object
+    if (forceSetProperty(feature, methodKey, wrapped)) {
+      console.log(`[SolDecode] wrapped Wallet Standard ${featureKey} in place`);
+    } else {
+      // Strategy 2: clone the feature object and replace it on the features map
+      const cloned = { ...feature, [methodKey]: wrapped };
+      if (forceSetProperty(features, featureKey, cloned)) {
+        console.log(`[SolDecode] wrapped Wallet Standard ${featureKey} (replaced feature entry)`);
+      } else {
+        console.log(`[SolDecode] in-place + entry-replace failed for ${featureKey}, relying on features proxy`);
+      }
+    }
+
+    // Return a wrapped feature object regardless — the wallet.features Proxy
+    // below serves this on every get, which is the ONLY strategy that works
+    // when the feature object is itself a Proxy with a tamper-resistant getter
+    // (observed on Jupiter Wallet).
+    return { ...feature, [methodKey]: wrapped };
+  };
+
+  const wrappedFeatureMap = new Map<string, Record<string, unknown>>();
+  const signFeatureKeys: Array<[string, string]> = [
+    ["solana:signTransaction", "signTransaction"],
+    ["solana:signAndSendTransaction", "signAndSendTransaction"],
+    ["solana:signAllTransactions", "signAllTransactions"],
+  ];
+  for (const [featureKey, methodKey] of signFeatureKeys) {
+    const w = buildWrappedFeature(featureKey, methodKey);
+    if (w) wrappedFeatureMap.set(featureKey, w);
+  }
+
+  // Strategy 3 — wallet.features Proxy.
+  // Replaces wallet.features with a Proxy whose `get` trap returns our
+  // pre-built wrapped feature objects for the three sign-related keys. This
+  // is the ONLY strategy that works when the underlying feature object is a
+  // Proxy with a lying getter (observed on Jupiter Wallet). Uses
+  // forceSetProperty so frozen-but-configurable wallet objects still get the
+  // swap.
+  try {
+    const featuresProxy = new Proxy(features, {
+      get(target, prop, receiver) {
+        if (typeof prop === "string" && wrappedFeatureMap.has(prop)) {
+          return wrappedFeatureMap.get(prop);
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    if (forceSetProperty(wallet, "features", featuresProxy)) {
+      console.log(`[SolDecode] installed wallet.features Proxy for ${walletName}`);
+    } else {
+      console.log(`[SolDecode] could not replace wallet.features for ${walletName}`);
+    }
   } catch (e) {
-    console.log("[SolDecode] instrumentation failed:", (e as Error).message);
+    console.log(`[SolDecode] failed to build features Proxy for ${walletName}: ${(e as Error).message}`);
   }
-  // --- end instrumentation ---
 
-  // Intercept solana:signTransaction
-  const signTxFeature = features["solana:signTransaction"];
-  if (signTxFeature?.signTransaction && typeof signTxFeature.signTransaction === "function") {
-    const original = signTxFeature.signTransaction as (...args: unknown[]) => Promise<unknown>;
-    const wrapped = wrapStandardFeatureMethod(original, "solana:signTransaction", wallet);
-
-    if (!forceSetProperty(signTxFeature, "signTransaction", wrapped)) {
-      // Feature object is frozen — replace the entire feature entry
-      const newFeature = { ...signTxFeature, signTransaction: wrapped };
-      forceSetProperty(features, "solana:signTransaction", newFeature);
-      console.log("[SolDecode] wrapped Wallet Standard solana:signTransaction (replaced frozen feature)");
-    } else {
-      console.log("[SolDecode] wrapped Wallet Standard solana:signTransaction");
+  // Post-wrap verification — reads back each wrapped key through the live
+  // wallet.features path and logs whether it matches the wrapper we built.
+  // If any key logs MISMATCH, our interception is not visible to the dApp and
+  // something else is going on — this is the diagnostic that tells us.
+  try {
+    const liveFeatures = wallet.features as Record<string, Record<string, unknown>> | undefined;
+    for (const [featureKey, methodKey] of signFeatureKeys) {
+      const expected = wrappedFeatureMap.get(featureKey);
+      if (!expected) continue;
+      const live = liveFeatures?.[featureKey]?.[methodKey];
+      const expectedFn = expected[methodKey];
+      const match = live === expectedFn;
+      console.log(`[SolDecode] post-wrap check ${walletName} ${featureKey}: ${match ? "OK" : "MISMATCH"}`);
     }
-  }
-
-  // Intercept solana:signAndSendTransaction
-  const signSendFeature = features["solana:signAndSendTransaction"];
-  if (signSendFeature?.signAndSendTransaction && typeof signSendFeature.signAndSendTransaction === "function") {
-    const original = signSendFeature.signAndSendTransaction as (...args: unknown[]) => Promise<unknown>;
-    const wrapped = wrapStandardFeatureMethod(original, "solana:signAndSendTransaction", wallet);
-
-    if (!forceSetProperty(signSendFeature, "signAndSendTransaction", wrapped)) {
-      // Feature object is frozen — replace the entire feature entry
-      const newFeature = { ...signSendFeature, signAndSendTransaction: wrapped };
-      forceSetProperty(features, "solana:signAndSendTransaction", newFeature);
-      console.log("[SolDecode] wrapped Wallet Standard solana:signAndSendTransaction (replaced frozen feature)");
-    } else {
-      console.log("[SolDecode] wrapped Wallet Standard solana:signAndSendTransaction");
-    }
-  }
-
-  // Also wrap the wallet.features getter with a Proxy so even if the dApp
-  // looks up features later, it gets our wrapped versions
-  if (!Object.isFrozen(wallet)) {
-    try {
-      const featuresProxy = new Proxy(features, {
-        get(target, prop, receiver) {
-          return Reflect.get(target, prop, receiver);
-        },
-      });
-      wallet.features = featuresProxy;
-    } catch { /* ignore if we can't replace */ }
+  } catch (e) {
+    console.log(`[SolDecode] post-wrap check failed: ${(e as Error).message}`);
   }
 
   try {
@@ -444,48 +500,6 @@ function wrapStandardWallet(wallet: Record<string, unknown>): Record<string, unk
   } catch { /* frozen wallet object */ }
 
   return wallet;
-}
-
-/**
- * PHASE 1 DISCOVERY — TEMPORARY. Remove in Task 4.
- *
- * Wraps every function-valued method on every `solana:*` feature object with a
- * pass-through call-logger. The goal is to discover which feature a dApp actually
- * calls when we can't reproduce the entry point any other way.
- *
- * This logger delegates through untouched — it does NOT call requestSimulation
- * and does NOT throw. It cannot break wallet signing. It only prints one log line.
- */
-function instrumentAllSolanaFeatures(
-  features: Record<string, Record<string, unknown>>,
-  walletName: string,
-): void {
-  for (const featureKey of Object.keys(features)) {
-    if (!featureKey.startsWith("solana:")) continue;
-    const feature = features[featureKey];
-    if (!feature || typeof feature !== "object") continue;
-
-    for (const methodKey of Object.keys(feature)) {
-      const method = feature[methodKey];
-      if (typeof method !== "function") continue;
-
-      // Reason: skip functions we already wrap with real interception — don't
-      // double-log their call sites.
-      if (
-        (featureKey === "solana:signTransaction" && methodKey === "signTransaction") ||
-        (featureKey === "solana:signAndSendTransaction" && methodKey === "signAndSendTransaction")
-      ) {
-        continue;
-      }
-
-      const original = method as (...args: unknown[]) => unknown;
-      const logged = function (this: unknown, ...args: unknown[]): unknown {
-        console.log(`[SolDecode] feature call: ${walletName} → ${featureKey}.${methodKey}`);
-        return original.apply(this, args);
-      };
-      forceSetProperty(feature, methodKey, logged);
-    }
-  }
 }
 
 /**
