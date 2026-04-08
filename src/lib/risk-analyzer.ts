@@ -27,6 +27,7 @@ import {
   TOKEN_2022_PROGRAM_ID,
   STAKE_PROGRAM_ID,
   LAMPORTS_PER_SOL,
+  CANONICAL_TOKENS,
 } from "./constants";
 import type { TxFeeInputs } from "./fee-calculator";
 import { readU64LEBigInt } from "./tx-parser";
@@ -377,6 +378,39 @@ function detectActiveFreezeAuthority(
 }
 
 /**
+ * Detects tokens that claim a canonical symbol (USDC, USDT, etc.) but whose
+ * mint address doesn't match the real one. Scammers use this pattern to
+ * airdrop worthless copycat tokens or swap-output them into user wallets.
+ *
+ * Uses the hardcoded CANONICAL_TOKENS table as ground truth — the false
+ * positive rate on legit tokens claiming a popular symbol is effectively
+ * zero for the entries in that table.
+ */
+function detectImpersonatorToken(balanceChanges: BalanceChange[]): RiskWarning[] {
+  for (const change of balanceChanges) {
+    if (!change.symbol) continue;
+    const symbolKey = change.symbol.toUpperCase();
+    const canonicalMint = CANONICAL_TOKENS[symbolKey];
+    if (!canonicalMint) continue;
+    if (change.mint === canonicalMint) continue;
+
+    return [
+      {
+        severity: "critical",
+        title: "Impersonator Token",
+        description:
+          `This transaction involves a token using the symbol "${change.symbol}", ` +
+          `but its mint address (${change.mint.slice(0, 8)}...${change.mint.slice(-4)}) ` +
+          `does not match the canonical ${symbolKey} mint. This is a common scam — ` +
+          `worthless copycat tokens are airdropped or swap-output into wallets to ` +
+          `trick users into thinking they received the real thing.`,
+      },
+    ];
+  }
+  return [];
+}
+
+/**
  * Detects when the user is RECEIVING a token with USD liquidity below
  * a threshold — meaning they may not be able to sell it back. Classic
  * honeypot setup.
@@ -635,6 +669,7 @@ export function analyzeRisks(
   warnings.push(...detectActiveFreezeAuthority(balanceChanges, tokenInfoMap));
   warnings.push(...detectLowLiquidity(balanceChanges, tokenInfoMap));
   warnings.push(...detectFreshOrUnknownToken(balanceChanges, tokenInfoMap));
+  warnings.push(...detectImpersonatorToken(balanceChanges));
   warnings.push(...detectUsdValueAsymmetry(balanceChanges, tokenInfoMap));
 
   // Reason: any warning escalates risk to WARNING; DANGER is reserved for failed sims.

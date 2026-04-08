@@ -66,6 +66,29 @@ export const KNOWN_PROGRAMS: Record<string, string> = {
   "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr": "Memo Program",
 };
 
+/**
+ * Canonical mint addresses for widely-known Solana tokens, keyed by symbol
+ * (uppercase). Used by the impersonator-token detector to catch scam tokens
+ * that borrow a popular symbol but use a fake mint.
+ *
+ * The canonical list is intentionally small — it only needs to cover tokens
+ * scammers actually impersonate. Every entry here is a token with enough
+ * name recognition and value that users would copy it from memory.
+ */
+export const CANONICAL_TOKENS: Record<string, string> = {
+  USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  USDT: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+  SOL: SOL_MINT,
+  WSOL: SOL_MINT,
+  JUP: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+  BONK: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+  WIF: "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+  JTO: "jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL",
+  RAY: "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+  PYTH: "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3",
+  W: "85VBFQZC9TZkfaptBWjvUw7YbZjy52A6mjtPGjstQAmQ",
+};
+
 /** Default Helius RPC endpoint (user provides their own key). */
 export const DEFAULT_RPC_ENDPOINT = "https://mainnet.helius-rpc.com/?api-key=";
 

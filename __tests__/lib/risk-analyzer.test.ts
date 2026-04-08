@@ -978,3 +978,98 @@ describe("detectDustSolReceipt", () => {
     expect(warnings.some((w) => w.title === "Sub-Dust Incoming Transfer")).toBe(false);
   });
 });
+
+describe("detectImpersonatorToken", () => {
+  const REAL_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const FAKE_USDC_MINT = "FakeUSDCmintXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+
+  it("fires on a fake USDC (wrong mint, matching symbol)", () => {
+    const change: BalanceChange = {
+      mint: FAKE_USDC_MINT,
+      symbol: "USDC",
+      name: "USD Coin",
+      amount: 1000,
+      decimals: 6,
+      logoURI: null,
+    };
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      [change],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      EMPTY_INFO_MAP,
+    );
+    const w = warnings.find((x) => x.title === "Impersonator Token");
+    expect(w).toBeDefined();
+    expect(w!.severity).toBe("critical");
+  });
+
+  it("does NOT fire on the real USDC mint", () => {
+    const change: BalanceChange = {
+      mint: REAL_USDC_MINT,
+      symbol: "USDC",
+      name: "USD Coin",
+      amount: 1000,
+      decimals: 6,
+      logoURI: null,
+    };
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      [change],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      EMPTY_INFO_MAP,
+    );
+    expect(warnings.some((w) => w.title === "Impersonator Token")).toBe(false);
+  });
+
+  it("is case-insensitive on the symbol field", () => {
+    const change: BalanceChange = {
+      mint: FAKE_USDC_MINT,
+      symbol: "usdc",
+      name: "USD Coin",
+      amount: 500,
+      decimals: 6,
+      logoURI: null,
+    };
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      [change],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      EMPTY_INFO_MAP,
+    );
+    expect(warnings.some((w) => w.title === "Impersonator Token")).toBe(true);
+  });
+
+  it("does NOT fire on symbols not in the canonical table", () => {
+    const change: BalanceChange = {
+      mint: "SomeMint1111111111111111111111111111111111",
+      symbol: "RANDOMTOKEN",
+      name: "Random Token",
+      amount: 100,
+      decimals: 6,
+      logoURI: null,
+    };
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      [change],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      EMPTY_INFO_MAP,
+    );
+    expect(warnings.some((w) => w.title === "Impersonator Token")).toBe(false);
+  });
+});
