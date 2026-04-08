@@ -213,3 +213,86 @@
 .btn-proceed-danger { background: #333; color: #888; }
 .btn-reject { background: #1a1a2e; color: #f44336; border: 1px solid #333; }
 .btn-reject-prominent { background: #f44336; color: #fff; }
+
+.soldecode-toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  min-width: 280px;
+  max-width: 380px;
+  background: #1a1d24;
+  color: #e0e3e8;
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  z-index: 2147483647;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+}
+
+.soldecode-toast.toast-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.soldecode-toast .toast-icon {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.soldecode-toast .toast-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.soldecode-toast .toast-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.soldecode-toast .toast-detail {
+  font-size: 12px;
+  opacity: 0.75;
+  word-break: break-word;
+}
+
+.soldecode-toast.toast-confirmed {
+  border-left: 4px solid #00d4aa;
+}
+
+.soldecode-toast.toast-confirmed .toast-icon {
+  color: #00d4aa;
+}
+
+.soldecode-toast.toast-diverged {
+  border-left: 4px solid #ffb547;
+}
+
+.soldecode-toast.toast-diverged .toast-icon {
+  color: #ffb547;
+}
+
+.soldecode-toast.toast-failed {
+  border-left: 4px solid #ff5c5c;
+}
+
+.soldecode-toast.toast-failed .toast-icon {
+  color: #ff5c5c;
+}
+
+.soldecode-toast.toast-dropped {
+  border-left: 4px solid #8a8f98;
+}
+
+.soldecode-toast.toast-dropped .toast-icon {
+  color: #8a8f98;
+}

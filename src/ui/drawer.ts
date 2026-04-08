@@ -247,6 +247,63 @@ function buildTokenLabel(change: BalanceChange): string {
 }
 
 /**
+ * Displays a non-blocking confirmation toast at the bottom-right of the
+ * drawer's shadow DOM. Independent of the sliding preview drawer — this
+ * can render even after the drawer has closed. Auto-dismisses after 10s.
+ */
+export function showConfirmationToast(
+  drawer: DrawerInstance,
+  status: "CONFIRMED" | "DIVERGED" | "FAILED" | "DROPPED",
+  detail: string,
+): void {
+  // Remove any prior toast so multiple results don't stack.
+  const existing = drawer.shadowRoot.querySelector(".soldecode-toast");
+  if (existing) existing.remove();
+
+  const toast = document.createElement("div");
+  toast.className = `soldecode-toast toast-${status.toLowerCase()}`;
+
+  const icon =
+    status === "CONFIRMED" ? "✓" :
+    status === "DIVERGED" ? "⚠" :
+    status === "FAILED" ? "✗" : "⧖";
+
+  const title =
+    status === "CONFIRMED" ? "Transaction Confirmed" :
+    status === "DIVERGED" ? "Results Differ from Preview" :
+    status === "FAILED" ? "Transaction Failed" : "Not Confirmed (60s)";
+
+  toast.innerHTML = `
+    <div class="toast-icon">${escapeHtmlForToast(icon)}</div>
+    <div class="toast-body">
+      <div class="toast-title">${escapeHtmlForToast(title)}</div>
+      ${detail ? `<div class="toast-detail">${escapeHtmlForToast(detail)}</div>` : ""}
+    </div>
+  `;
+
+  drawer.shadowRoot.appendChild(toast);
+
+  // Trigger CSS transition in on next frame.
+  requestAnimationFrame(() => toast.classList.add("toast-visible"));
+
+  // Auto-dismiss after 10 seconds.
+  setTimeout(() => {
+    toast.classList.remove("toast-visible");
+    setTimeout(() => toast.remove(), 300);
+  }, 10_000);
+}
+
+/** Minimal HTML-escape just for the toast — keeps drawer's internal escapeHtml private. */
+function escapeHtmlForToast(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
  * Builds the action button pair styled for the given risk level.
  * SAFE: green proceed + muted reject.
  * WARNING: muted yellow proceed + prominent red reject.

@@ -4,7 +4,7 @@
  * Mounts the Shadow DOM preview drawer when a simulation result is ready.
  */
 
-import { createDrawer, showDrawer } from "./ui/drawer";
+import { createDrawer, showDrawer, showConfirmationToast } from "./ui/drawer";
 
 /** Injects the main-world script via a <script> tag at document start. */
 function injectMainWorldScript(): void {
@@ -92,6 +92,52 @@ window.addEventListener("message", async (event) => {
     console.warn("[SolDecode] Error in content script:", error);
     window.postMessage({ type: "SOLDECODE_RESULT", id, action: "PROCEED" }, "*");
   }
+});
+
+/**
+ * Listens for SOLDECODE_TRACK messages from inject.ts (fire-and-forget).
+ * Relays to the service worker which handles the on-chain polling.
+ */
+window.addEventListener("message", (event) => {
+  if (event.source !== window) return;
+  const data = event.data as Record<string, unknown> | null;
+  if (
+    typeof data !== "object" ||
+    data === null ||
+    data.type !== "SOLDECODE_TRACK"
+  ) {
+    return;
+  }
+  const { signature, userPubkey, origin } = data as {
+    signature: string;
+    userPubkey?: string | null;
+    origin: string;
+  };
+  console.log("[SolDecode] content-script forwarding TRACK_TX, sig:", signature.slice(0, 8) + "…");
+  // Fire-and-forget — service worker handles polling and pushes TX_STATUS back.
+  chrome.runtime.sendMessage({
+    type: "TRACK_TX",
+    signature,
+    userPubkey,
+    origin,
+  }).catch((err) => {
+    console.warn("[SolDecode] TRACK_TX send failed:", err);
+  });
+});
+
+/**
+ * Listens for TX_STATUS messages pushed from the service worker after it
+ * finishes polling the chain. Displays a non-blocking confirmation toast
+ * in the drawer shadow DOM.
+ */
+chrome.runtime.onMessage.addListener((message) => {
+  if (typeof message !== "object" || message === null) return;
+  const msg = message as Record<string, unknown>;
+  if (msg.type !== "TX_STATUS") return;
+  const status = msg.status as "CONFIRMED" | "DIVERGED" | "FAILED" | "DROPPED";
+  const detail = typeof msg.detail === "string" ? msg.detail : "";
+  const d = getDrawer();
+  showConfirmationToast(d, status, detail);
 });
 
 // Inject the main-world script immediately at document_start.

@@ -3,12 +3,34 @@
  * Orchestrates: receive tx → simulate → decode → risk analyze → return preview.
  */
 
-import { simulateTransaction } from "./lib/simulator";
+import { simulateTransaction, getSignatureStatus, getTransaction } from "./lib/simulator";
 import { decodeSimulation } from "./lib/simulation-decoder";
 import { calculateFeeSol, getFeeInputs, BASE_LAMPORTS_PER_SIGNATURE } from "./lib/fee-calculator";
 import { parseTransaction } from "./lib/tx-parser";
 import { LAMPORTS_PER_SOL } from "./lib/constants";
-import type { ExtensionSettings } from "./types";
+import type { ExtensionSettings, SimulatedPreview } from "./types";
+
+/**
+ * Stores simulated previews keyed by their SIMULATE id, so the tracker can
+ * later compare actual on-chain results against the preview the user approved.
+ * TTL is 5 minutes — any tx not submitted within that window is dropped.
+ */
+const pendingPreviews = new Map<string, {
+  preview: SimulatedPreview;
+  userPubkey: string;
+  expiresAt: number;
+}>();
+
+/**
+ * Removes stale entries from pendingPreviews. Called opportunistically on
+ * each TRACK_TX so the map doesn't grow unbounded.
+ */
+function cleanStalePreviews(): void {
+  const now = Date.now();
+  for (const [key, entry] of pendingPreviews) {
+    if (entry.expiresAt < now) pendingPreviews.delete(key);
+  }
+}
 
 /** Retrieves extension settings from chrome.storage.local. */
 async function getSettings(): Promise<ExtensionSettings> {
@@ -82,6 +104,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           estimatedFee,
         );
 
+        pendingPreviews.set(id, {
+          preview,
+          userPubkey,
+          expiresAt: Date.now() + 5 * 60 * 1000,
+        });
         sendResponse({ type: "SIMULATE_RESULT", id, preview });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "Unknown simulation error";
@@ -91,7 +118,192 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
     return true; // Signal async response
   }
+
+  if (message.type === "TRACK_TX") {
+    const { signature, userPubkey: trackPubkey } = message as {
+      signature: string;
+      userPubkey?: string | null;
+    };
+    const tabId = _sender.tab?.id;
+    if (tabId == null) {
+      sendResponse({ ok: false, error: "no tab id" });
+      return;
+    }
+    cleanStalePreviews();
+    // Find the most recent stored preview whose userPubkey matches and
+    // which has not yet been consumed. We don't have the original SIMULATE
+    // id in the track message — the tracker correlates by recency + user.
+    let matchedPreview: SimulatedPreview | null = null;
+    let matchedKey: string | null = null;
+    let newestExpiry = 0;
+    for (const [key, entry] of pendingPreviews) {
+      if (entry.userPubkey !== trackPubkey) continue;
+      if (entry.expiresAt > newestExpiry) {
+        matchedPreview = entry.preview;
+        matchedKey = key;
+        newestExpiry = entry.expiresAt;
+      }
+    }
+    if (matchedKey) pendingPreviews.delete(matchedKey);
+
+    trackAndReport(signature, trackPubkey ?? "", matchedPreview, tabId).catch((err) => {
+      console.warn("[SolDecode] trackAndReport failed:", err);
+    });
+    sendResponse({ ok: true });
+    return true;
+  }
 });
+
+/**
+ * Polls the chain for a submitted tx and reports the final status back to
+ * the originating tab via chrome.tabs.sendMessage. Fires one TX_STATUS
+ * message with the final classification:
+ *   CONFIRMED — finalized with effects matching the simulated preview
+ *   DIVERGED  — finalized but actual balance changes differ ≥ 5%
+ *   FAILED    — finalized with err !== null
+ *   DROPPED   — never confirmed within the polling window
+ */
+async function trackAndReport(
+  signature: string,
+  userPubkey: string,
+  simPreview: SimulatedPreview | null,
+  tabId: number,
+): Promise<void> {
+  const POLL_INTERVAL_MS = 2000;
+  const MAX_ATTEMPTS = 30; // 60 seconds
+
+  let finalStatus: "CONFIRMED" | "DIVERGED" | "FAILED" | "DROPPED" = "DROPPED";
+  let detail = "";
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      const status = await getSignatureStatus(signature);
+      if (status) {
+        if (status.err !== null) {
+          finalStatus = "FAILED";
+          detail = "Transaction failed on-chain.";
+          break;
+        }
+        if (
+          status.confirmationStatus === "confirmed" ||
+          status.confirmationStatus === "finalized"
+        ) {
+          // Got it — fetch full tx and compute divergence.
+          try {
+            const tx = await getTransaction(signature);
+            if (tx && simPreview) {
+              const divergence = computeDivergence(tx, simPreview, userPubkey);
+              if (divergence.diverged) {
+                finalStatus = "DIVERGED";
+                detail = divergence.detail;
+              } else {
+                finalStatus = "CONFIRMED";
+                detail = "Balance changes match preview.";
+              }
+            } else {
+              finalStatus = "CONFIRMED";
+              detail = "Confirmed on-chain.";
+            }
+          } catch (e) {
+            // Could not fetch the tx — still confirmed as a signature status.
+            finalStatus = "CONFIRMED";
+            detail = "Confirmed on-chain (tx fetch failed).";
+          }
+          break;
+        }
+      }
+    } catch (e) {
+      // RPC error on a single poll — keep trying.
+      console.warn("[SolDecode] signature status poll error:", e);
+    }
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+  }
+
+  try {
+    await chrome.tabs.sendMessage(tabId, {
+      type: "TX_STATUS",
+      signature,
+      status: finalStatus,
+      detail,
+    });
+  } catch (e) {
+    // Tab may have closed — nothing to do.
+    console.warn("[SolDecode] TX_STATUS push failed:", e);
+  }
+}
+
+/**
+ * Compares the balance changes from a finalized tx against the simulated
+ * preview's balance changes. Returns diverged=true if any simulated mint's
+ * actual amount differs by ≥ 5% (or the mint is missing entirely from the
+ * actual result).
+ */
+function computeDivergence(
+  tx: NonNullable<Awaited<ReturnType<typeof getTransaction>>>,
+  simPreview: SimulatedPreview,
+  userPubkey: string,
+): { diverged: boolean; detail: string } {
+  const DIVERGENCE_THRESHOLD = 0.05;
+  const accountKeys = tx.transaction?.message?.accountKeys ?? [];
+
+  // Compute actual SOL change for the user's pubkey.
+  let actualSolLamports = 0;
+  for (let i = 0; i < accountKeys.length; i++) {
+    if (accountKeys[i] === userPubkey) {
+      actualSolLamports += (tx.meta.postBalances[i] ?? 0) - (tx.meta.preBalances[i] ?? 0);
+    }
+  }
+  const actualSol = actualSolLamports / 1_000_000_000;
+
+  // Compute actual token changes for the user's pubkey, keyed by mint.
+  const actualTokens = new Map<string, number>();
+  const pre = new Map<string, number>();
+  for (const t of tx.meta.preTokenBalances ?? []) {
+    if (t.owner !== userPubkey) continue;
+    pre.set(`${t.accountIndex}-${t.mint}`, t.uiTokenAmount.uiAmount ?? 0);
+  }
+  for (const t of tx.meta.postTokenBalances ?? []) {
+    if (t.owner !== userPubkey) continue;
+    const key = `${t.accountIndex}-${t.mint}`;
+    const preAmount = pre.get(key) ?? 0;
+    const diff = (t.uiTokenAmount.uiAmount ?? 0) - preAmount;
+    if (Math.abs(diff) > 0.000001) {
+      actualTokens.set(t.mint, (actualTokens.get(t.mint) ?? 0) + diff);
+    }
+  }
+  // Also handle tokens present pre but missing post (fully spent).
+  for (const [key, preAmount] of pre) {
+    const mint = key.slice(key.indexOf("-") + 1);
+    if (!actualTokens.has(mint) && preAmount > 0) {
+      actualTokens.set(mint, -preAmount);
+    }
+  }
+
+  // For each simulated change, find the corresponding actual and compare.
+  const diverged: string[] = [];
+  for (const simChange of simPreview.balanceChanges) {
+    const simAmount = simChange.amount;
+    const actualAmount =
+      simChange.mint === "So11111111111111111111111111111111111111112"
+        ? actualSol
+        : (actualTokens.get(simChange.mint) ?? 0);
+    if (Math.abs(simAmount) < 1e-9) continue; // skip zero-amount sim entries
+    const ratio = Math.abs(actualAmount - simAmount) / Math.abs(simAmount);
+    if (ratio >= DIVERGENCE_THRESHOLD) {
+      diverged.push(
+        `${simChange.symbol}: expected ${simAmount.toFixed(6)}, got ${actualAmount.toFixed(6)}`,
+      );
+    }
+  }
+
+  if (diverged.length > 0) {
+    return {
+      diverged: true,
+      detail: diverged.join("; "),
+    };
+  }
+  return { diverged: false, detail: "" };
+}
 
 /**
  * Initializes default settings on first install.

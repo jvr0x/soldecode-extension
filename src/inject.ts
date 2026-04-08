@@ -18,6 +18,100 @@ const pendingRequests = new Map<string, {
 let lastKnownUserPubkey: string | null = null;
 
 /**
+ * Tiny base58 encoder used to convert raw 64-byte signatures from
+ * Wallet Standard return values into the base58 string format used
+ * by Solana RPCs. Self-contained so inject.ts doesn't pull a
+ * dependency into the page main world.
+ */
+const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+function base58Encode(bytes: Uint8Array): string {
+  if (bytes.length === 0) return "";
+  let zeros = 0;
+  while (zeros < bytes.length && bytes[zeros] === 0) zeros++;
+
+  const size = Math.floor(((bytes.length - zeros) * 138) / 100) + 1;
+  const b58 = new Uint8Array(size);
+  let length = 0;
+  for (let i = zeros; i < bytes.length; i++) {
+    let carry = bytes[i];
+    let j = 0;
+    for (let k = size - 1; (carry !== 0 || j < length) && k >= 0; k--, j++) {
+      carry += 256 * b58[k];
+      b58[k] = carry % 58;
+      carry = Math.floor(carry / 58);
+    }
+    length = j;
+  }
+
+  let it = size - length;
+  while (it < size && b58[it] === 0) it++;
+
+  let result = "1".repeat(zeros);
+  for (; it < size; it++) result += BASE58_ALPHABET[b58[it]];
+  return result;
+}
+
+/**
+ * Extracts a base58 signature from a wallet sign-method return value.
+ * Handles the three observed shapes:
+ *  - Phantom signAndSendTransaction → { signature: string, publicKey }
+ *  - Wallet Standard signAndSendTransaction → [{ signature: Uint8Array }]
+ *  - signTransaction (both paths) → signed Transaction object with
+ *    .signatures = [{ signature: Uint8Array }] (legacy) or [Uint8Array] (v0)
+ *  - signAllTransactions → an array of any of the above
+ *
+ * Returns null if the return value is an unknown shape — callers should
+ * treat null as "tracking not available" and silently skip.
+ */
+function extractSignature(result: unknown): string | null {
+  if (!result) return null;
+
+  // Array case: dig into the first element (Wallet Standard + signAll)
+  if (Array.isArray(result) && result.length > 0) {
+    return extractSignature(result[0]);
+  }
+
+  if (typeof result !== "object") return null;
+  const r = result as Record<string, unknown>;
+
+  // Phantom signAndSendTransaction: signature already base58
+  if (typeof r.signature === "string") return r.signature;
+
+  // Wallet Standard signAndSendTransaction: signature is Uint8Array
+  if (r.signature instanceof Uint8Array) return base58Encode(r.signature);
+
+  // Signed Transaction object with .signatures array
+  if (Array.isArray(r.signatures) && r.signatures.length > 0) {
+    const first = r.signatures[0];
+    if (first instanceof Uint8Array) return base58Encode(first);
+    if (first && typeof first === "object") {
+      const sig = (first as { signature?: Uint8Array }).signature;
+      if (sig instanceof Uint8Array) return base58Encode(sig);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Posts a SOLDECODE_TRACK message to the content script with the captured
+ * signature. Fire-and-forget — the content script and service worker handle
+ * the polling entirely out-of-band; inject.ts never waits for the result.
+ */
+function postTrackingRequest(signature: string, userPubkey: string | null): void {
+  window.postMessage(
+    {
+      type: "SOLDECODE_TRACK",
+      signature,
+      userPubkey,
+      origin: window.location.origin,
+    },
+    "*",
+  );
+}
+
+/**
  * Reads the connected wallet's pubkey from a legacy provider object.
  * Phantom and most legacy adapters expose `provider.publicKey` as a PublicKey
  * with a `toBase58()` method, but we accept any string-like form too.
@@ -170,15 +264,19 @@ function patchProvider(provider: Record<string, unknown>): void {
     provider.signTransaction = async function (transaction: unknown) {
       console.log("[SolDecode] intercepted signTransaction");
       const base64 = serializeTransaction(transaction);
+      let pubkey: string | null = null;
       if (base64) {
-        const pubkey = readPubkeyFromProvider(provider) ?? lastKnownUserPubkey;
+        pubkey = readPubkeyFromProvider(provider) ?? lastKnownUserPubkey;
         if (pubkey) lastKnownUserPubkey = pubkey;
         const action = await requestSimulation(base64, pubkey);
         if (action === "REJECT") {
           throw new Error("Transaction rejected by user via SolDecode");
         }
       }
-      return original(transaction);
+      const result = await original(transaction);
+      const signature = extractSignature(result);
+      if (signature) postTrackingRequest(signature, pubkey);
+      return result;
     };
     console.log("[SolDecode] patched provider.signTransaction");
   }
@@ -188,6 +286,7 @@ function patchProvider(provider: Record<string, unknown>): void {
     const original = (provider.signAllTransactions as Function).bind(provider);
     provider.signAllTransactions = async function (transactions: unknown[]) {
       console.log(`[SolDecode] intercepted signAllTransactions (${transactions.length} txs)`);
+      let pubkey: string | null = null;
       if (transactions.length > 0) {
         // Reason: in multi-tx batches the swap is almost always last; earlier txs
         // are setup (wrap SOL, create ATA, etc). Previewing the last tx surfaces
@@ -195,7 +294,7 @@ function patchProvider(provider: Record<string, unknown>): void {
         const target = transactions[transactions.length - 1];
         const base64 = serializeTransaction(target);
         if (base64) {
-          const pubkey = readPubkeyFromProvider(provider) ?? lastKnownUserPubkey;
+          pubkey = readPubkeyFromProvider(provider) ?? lastKnownUserPubkey;
           if (pubkey) lastKnownUserPubkey = pubkey;
           const action = await requestSimulation(base64, pubkey);
           if (action === "REJECT") {
@@ -203,7 +302,14 @@ function patchProvider(provider: Record<string, unknown>): void {
           }
         }
       }
-      return original(transactions);
+      const result = await original(transactions);
+      // Track the last transaction in the batch (matches the one we previewed).
+      const lastResult = Array.isArray(result) && result.length > 0
+        ? result[result.length - 1]
+        : result;
+      const signature = extractSignature(lastResult);
+      if (signature) postTrackingRequest(signature, pubkey);
+      return result;
     };
     console.log("[SolDecode] patched provider.signAllTransactions");
   }
@@ -214,15 +320,19 @@ function patchProvider(provider: Record<string, unknown>): void {
     provider.signAndSendTransaction = async function (transaction: unknown, options?: unknown) {
       console.log("[SolDecode] intercepted signAndSendTransaction");
       const base64 = serializeTransaction(transaction);
+      let pubkey: string | null = null;
       if (base64) {
-        const pubkey = readPubkeyFromProvider(provider) ?? lastKnownUserPubkey;
+        pubkey = readPubkeyFromProvider(provider) ?? lastKnownUserPubkey;
         if (pubkey) lastKnownUserPubkey = pubkey;
         const action = await requestSimulation(base64, pubkey);
         if (action === "REJECT") {
           throw new Error("Transaction rejected by user via SolDecode");
         }
       }
-      return original(transaction, options);
+      const result = await original(transaction, options);
+      const signature = extractSignature(result);
+      if (signature) postTrackingRequest(signature, pubkey);
+      return result;
     };
     console.log("[SolDecode] patched provider.signAndSendTransaction");
   }
@@ -313,11 +423,9 @@ function wrapStandardFeatureMethod(
   return async function (...args: unknown[]): Promise<unknown> {
     console.log(`[SolDecode] intercepted Wallet Standard ${featureName}`);
 
-    // Wallet Standard passes an object with a `transaction` field (Uint8Array).
-    // For signAllTransactions, the input shape is { transactions: [...] } — pick
-    // the LAST entry because the swap is almost always the final tx in a batch.
     const input = args[0] as Record<string, unknown> | undefined;
     let base64: string | null = null;
+    let pubkey: string | null = null;
 
     if (input) {
       const batched = (input as { transactions?: Uint8Array[] }).transactions;
@@ -337,10 +445,8 @@ function wrapStandardFeatureMethod(
     }
 
     if (base64) {
-      // Reason: Wallet Standard requests sometimes carry the account in
-      // input.account; otherwise fall back to wallet.accounts[0].
       const accountFromRequest = (input?.account as { address?: string } | undefined)?.address;
-      const pubkey = accountFromRequest ?? readPubkeyFromStandardWallet(wallet) ?? lastKnownUserPubkey;
+      pubkey = accountFromRequest ?? readPubkeyFromStandardWallet(wallet) ?? lastKnownUserPubkey;
       if (pubkey) lastKnownUserPubkey = pubkey;
       const action = await requestSimulation(base64, pubkey);
       if (action === "REJECT") {
@@ -348,7 +454,10 @@ function wrapStandardFeatureMethod(
       }
     }
 
-    return originalMethod.apply(this, args);
+    const result = await originalMethod.apply(this, args);
+    const signature = extractSignature(result);
+    if (signature) postTrackingRequest(signature, pubkey);
+    return result;
   };
 }
 
