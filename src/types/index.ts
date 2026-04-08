@@ -149,3 +149,36 @@ export interface ExtensionSettings {
   /** Helius RPC endpoint URL (includes API key). */
   rpcEndpoint: string;
 }
+
+/**
+ * One top-level instruction from a parsed Solana transaction message.
+ * Inner CPI calls are not represented here — those only show up in logs.
+ */
+export interface ParsedInstruction {
+  /** Index of the program in `ParsedTransaction.accountKeys`. */
+  programIdIndex: number;
+  /** Resolved program ID (base58). */
+  programId: string;
+  /** Account indices into `ParsedTransaction.accountKeys`. */
+  accountIndices: number[];
+  /** Resolved account keys (parallel to accountIndices) for convenience. */
+  accounts: string[];
+  /** Raw instruction data bytes. */
+  data: Uint8Array;
+}
+
+/**
+ * Structurally parsed Solana transaction. The shared output of tx-parser
+ * that fee-calculator and risk-analyzer both consume so the message bytes
+ * are walked exactly once per simulation.
+ */
+export interface ParsedTransaction {
+  /** Number of required signatures from the top-level shortvec. */
+  numSignatures: number;
+  /** Account keys in message order (signers first, then writable, then readonly). */
+  accountKeys: string[];
+  /** Top-level instructions, in order. */
+  instructions: ParsedInstruction[];
+  /** True for versioned (v0) transactions, false for legacy. */
+  versioned: boolean;
+}
