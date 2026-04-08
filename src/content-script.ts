@@ -79,18 +79,30 @@ window.addEventListener("message", async (event) => {
       const action = await showDrawer(d, response.preview as import("@/types").SimulatedPreview);
       window.postMessage({ type: "SOLDECODE_RESULT", id, action }, "*");
     } else if (response?.type === "SIMULATE_ERROR") {
-      // Simulation errored — warn but don't block the user.
-      console.warn("[SolDecode] Simulation error:", response.error);
-      window.postMessage({ type: "SOLDECODE_RESULT", id, action: "PROCEED" }, "*");
+      // Reason: fail closed on simulation errors. An attacker can construct
+      // a tx that deliberately breaks simulation (e.g. referencing accounts
+      // that cause the simulator to bail); auto-proceeding here would be a
+      // bypass of the entire preview pipeline. Legitimate RPC hiccups are
+      // retry-able — the user can resubmit.
+      console.warn("[SolDecode] Simulation error, auto-rejecting:", response.error);
+      window.postMessage({ type: "SOLDECODE_RESULT", id, action: "REJECT" }, "*");
     } else {
-      // Unexpected response shape — auto-proceed.
-      window.postMessage({ type: "SOLDECODE_RESULT", id, action: "PROCEED" }, "*");
+      // Reason: unexpected response shape means either a code bug or a
+      // version mismatch between content-script and service-worker. Either
+      // way, the preview is not available, so fail closed.
+      console.warn("[SolDecode] Unexpected response from service worker, auto-rejecting:", response);
+      window.postMessage({ type: "SOLDECODE_RESULT", id, action: "REJECT" }, "*");
     }
   } catch (error) {
-    // Reason: any runtime failure (extension context invalidated, RPC down, etc.)
-    // must never block the page. Always fall through to PROCEED.
-    console.warn("[SolDecode] Error in content script:", error);
-    window.postMessage({ type: "SOLDECODE_RESULT", id, action: "PROCEED" }, "*");
+    // Reason: runtime failures typically mean the extension context was
+    // invalidated (e.g. extension was updated mid-session) or
+    // chrome.runtime.sendMessage threw. The extension is effectively
+    // broken; the user should reload the page rather than sign without a
+    // preview. Fail closed and log so the user can see why in devtools.
+    // window.postMessage itself does not rely on chrome.runtime and will
+    // still deliver the REJECT to inject.ts.
+    console.warn("[SolDecode] Runtime error in content script, auto-rejecting:", error);
+    window.postMessage({ type: "SOLDECODE_RESULT", id, action: "REJECT" }, "*");
   }
 });
 
