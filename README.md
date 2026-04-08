@@ -30,18 +30,21 @@ When a dApp asks you to sign a transaction, SolDecode intercepts the request, si
    - **Mint / freeze authority changes** — `SetAuthority` on a mint
    - **Foreign-account close** — `CloseAccount` whose rent destination isn't your wallet
    - **Stake authority transfer** — Stake Program `Authorize` / `AuthorizeChecked`
+   - **Lookalike destination** — sending to an address whose first/last 4 chars match an address you've previously sent to, but isn't that same address (address-poisoning attack)
 
    **Balance-level detectors:**
    - **Drain heuristic** — any token wipe ≥ 95% of pre-balance, or SOL wipe ≥ 95% on meaningful balances
    - **Multi-asset outflow** — three or more distinct tokens leaving your wallet at once
    - **High-value outgoing transfers** (> 10 SOL)
+   - **Sub-dust incoming SOL** — transactions where you receive < 0.001 SOL as part of a signed operation (drainer bait / poisoning setup)
 
-   **Token-metadata detectors** (driven by Jupiter token-API data):
+   **Token-metadata and identity detectors:**
    - **Active mint authority** — receiving a token whose creator can still issue more
    - **Active freeze authority** — receiving a token whose creator can freeze your account
    - **Low liquidity** — receiving a token with < $10k of DEX liquidity (honeypot signal)
    - **Fresh / unknown token** — receiving a token with < 100 holders or no Jupiter listing
    - **USD value asymmetry** — outflow USD value ≥ 2× inflow value (warning), ≥ 10× (critical)
+   - **Impersonator tokens** — tokens whose symbol (after NFKD + zero-width strip + Cyrillic/Greek confusable normalization) matches a canonical ticker like USDC / USDT / JUP but whose mint address doesn't
 
    **Fee-level detectors:**
    - **Oversized priority fees** — priority fees ≥ 0.05 SOL (drain via fee mechanism)
@@ -49,7 +52,9 @@ When a dApp asks you to sign a transaction, SolDecode intercepts the request, si
 
 5. **Plain-English Preview** — The drawer shows a "What Will Happen" section with natural-language bullets ("Swap 1 USDC for ~0.000014 cbBTC via Jupiter", "Create a cbBTC token account in your wallet (one-time setup)", "Pay ~0.002 SOL in network fees & rent") instead of just raw program names. Tokens are resolved to symbols via the Jupiter token API and displayed alongside their shortened mint address. The technical instruction breakdown is still available in a secondary "Instructions" section.
 
-6. **Preview Drawer** — A slide-in panel appears alongside the Phantom popup showing the decoded preview. You click **Proceed** to continue to Phantom, or **Reject** to cancel the transaction.
+6. **Preview Drawer** — A slide-in panel appears alongside the Phantom popup showing the decoded preview. You click **Proceed** to continue to Phantom, or **Reject** to cancel the transaction. If the simulation pipeline stalls for more than 30 seconds, SolDecode automatically rejects the transaction rather than sign blind — a hostile page cannot stall the preview as a bypass.
+
+7. **Post-Submission Verification** — After you click Proceed, SolDecode captures the signature from the wallet's return value, polls the chain via `getSignatureStatus`, fetches the finalized tx via `getTransaction`, and compares the actual balance changes against what the simulation predicted. A small non-blocking toast appears at the bottom-right of the page with one of four outcomes: **Confirmed** (actual matches preview within 5%), **Results Differ** (≥ 5% drift on any tracked token — catches MEV sandwich losses, slippage blowouts, and token-address swaps), **Failed** (on-chain error), or **Not Confirmed** (tx not finalized within 60 s). The toast auto-dismisses after 10 s.
 
 ## Architecture
 
