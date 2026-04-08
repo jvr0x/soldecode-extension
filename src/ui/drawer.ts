@@ -140,20 +140,30 @@ function buildDrawerHTML(preview: SimulatedPreview): string {
     html += `</div>`;
   }
 
-  // Step-by-step breakdown
-  if (preview.steps.length > 0) {
-    // Circled number glyphs for the first 10 steps; fall back to plain numbers beyond that.
-    const circled = "①②③④⑤⑥⑦⑧⑨⑩";
+  // Plain-English explanation — appears first because it's what most users
+  // actually read. The technical breakdown follows below for power users.
+  if (preview.plainSteps.length > 0) {
     html += `<div class="card"><div class="section-title">What Will Happen</div>`;
-    for (const step of preview.steps) {
-      const num = step.index <= circled.length ? circled[step.index - 1] : `${step.index}.`;
-      html += `<div class="step">${num} ${step.description}</div>`;
+    for (const step of preview.plainSteps) {
+      html += `<div class="plain-step">• ${escapeHtml(step)}</div>`;
     }
     html += `</div>`;
   }
 
-  // Fee and compute unit info
-  html += `<div class="fee-text">Est. fee: ~${preview.estimatedFee.toFixed(6)} SOL · CU: ${preview.computeUnits.toLocaleString()} · ${preview.origin}</div>`;
+  // Technical instruction breakdown — secondary, smaller styling.
+  if (preview.steps.length > 0) {
+    // Circled number glyphs for the first 10 steps; fall back to plain numbers beyond that.
+    const circled = "①②③④⑤⑥⑦⑧⑨⑩";
+    html += `<div class="card"><div class="section-title section-title-secondary">Instructions</div>`;
+    for (const step of preview.steps) {
+      const num = step.index <= circled.length ? circled[step.index - 1] : `${step.index}.`;
+      html += `<div class="step">${num} ${escapeHtml(step.description)}</div>`;
+    }
+    html += `</div>`;
+  }
+
+  // Fee and compute unit info — origin is highlighted so the user can spot the dApp at a glance.
+  html += `<div class="fee-text">Est. fee: ~${preview.estimatedFee.toFixed(6)} SOL · CU: ${preview.computeUnits.toLocaleString()} · <span class="fee-origin">${escapeHtml(preview.origin)}</span></div>`;
 
   // Action buttons — color-coded by risk level
   html += buildActionButtons(preview.risk);
@@ -173,20 +183,61 @@ function buildWarningBanner(warning: RiskWarning): string {
   `;
 }
 
+/** Abbreviates a mint address to `xxxx...yyyy`. */
+function shortenMint(mint: string): string {
+  return `${mint.slice(0, 4)}...${mint.slice(-4)}`;
+}
+
+/** HTML-escapes a string so user-controlled mint data can't break markup. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 /**
  * Builds a single balance change row with appropriate color class.
+ * Native SOL shows just the symbol; SPL tokens show "SYMBOL (xxxx...yyyy)"
+ * when resolved, or just the shortened mint when unknown.
  */
 function buildBalanceRow(change: BalanceChange): string {
   const cls = change.amount >= 0 ? "balance-positive" : "balance-negative";
   const sign = change.amount >= 0 ? "+" : "";
   // Cap decimal display to 6 places for tokens with many decimals (e.g. SOL has 9).
   const displayDecimals = change.decimals > 6 ? 6 : change.decimals;
+
+  const label = buildTokenLabel(change);
+
   return `
     <div class="balance-row">
-      <span class="balance-label">${change.symbol}</span>
+      <span class="balance-label">${label}</span>
       <span class="${cls}">${sign}${change.amount.toFixed(displayDecimals)}</span>
     </div>
   `;
+}
+
+/**
+ * Renders a token label for the balance row.
+ * - Native SOL: just "SOL".
+ * - Resolved SPL: "SYMBOL <span class='mint-short'>(xxxx...yyyy)</span>".
+ * - Unknown SPL: just the shortened mint (cache symbol was already the short form).
+ */
+function buildTokenLabel(change: BalanceChange): string {
+  // Reason: SOL has no meaningful mint to expose to users.
+  if (change.mint === "So11111111111111111111111111111111111111112") {
+    return escapeHtml(change.symbol);
+  }
+
+  const short = shortenMint(change.mint);
+  // When the cache couldn't resolve the token it stores the shortened mint as
+  // the symbol, so there is nothing extra to append.
+  if (change.symbol === short || change.symbol === `${change.mint.slice(0, 4)}…${change.mint.slice(-4)}`) {
+    return escapeHtml(short);
+  }
+  return `${escapeHtml(change.symbol)} <span class="mint-short">(${escapeHtml(short)})</span>`;
 }
 
 /**
