@@ -380,6 +380,15 @@ function wrapStandardWallet(wallet: Record<string, unknown>): Record<string, unk
   const initialPubkey = readPubkeyFromStandardWallet(wallet);
   if (initialPubkey) lastKnownUserPubkey = initialPubkey;
 
+  // --- Phase 1 discovery instrumentation (temporary — remove in Task 4) ---
+  const walletName = (wallet as { name?: string }).name ?? "unknown";
+  try {
+    const featureKeys = Object.keys(features);
+    console.log(`[SolDecode] ${walletName} features: ${featureKeys.join(", ")}`);
+  } catch { /* ignore */ }
+  instrumentAllSolanaFeatures(features, walletName);
+  // --- end instrumentation ---
+
   // Intercept solana:signTransaction
   const signTxFeature = features["solana:signTransaction"];
   if (signTxFeature?.signTransaction && typeof signTxFeature.signTransaction === "function") {
@@ -430,6 +439,48 @@ function wrapStandardWallet(wallet: Record<string, unknown>): Record<string, unk
   } catch { /* frozen wallet object */ }
 
   return wallet;
+}
+
+/**
+ * PHASE 1 DISCOVERY — TEMPORARY. Remove in Task 4.
+ *
+ * Wraps every function-valued method on every `solana:*` feature object with a
+ * pass-through call-logger. The goal is to discover which feature a dApp actually
+ * calls when we can't reproduce the entry point any other way.
+ *
+ * This logger delegates through untouched — it does NOT call requestSimulation
+ * and does NOT throw. It cannot break wallet signing. It only prints one log line.
+ */
+function instrumentAllSolanaFeatures(
+  features: Record<string, Record<string, unknown>>,
+  walletName: string,
+): void {
+  for (const featureKey of Object.keys(features)) {
+    if (!featureKey.startsWith("solana:")) continue;
+    const feature = features[featureKey];
+    if (!feature || typeof feature !== "object") continue;
+
+    for (const methodKey of Object.keys(feature)) {
+      const method = feature[methodKey];
+      if (typeof method !== "function") continue;
+
+      // Reason: skip functions we already wrap with real interception — don't
+      // double-log their call sites.
+      if (
+        (featureKey === "solana:signTransaction" && methodKey === "signTransaction") ||
+        (featureKey === "solana:signAndSendTransaction" && methodKey === "signAndSendTransaction")
+      ) {
+        continue;
+      }
+
+      const original = method as (...args: unknown[]) => unknown;
+      const logged = function (this: unknown, ...args: unknown[]): unknown {
+        console.log(`[SolDecode] feature call: ${walletName} → ${featureKey}.${methodKey}`);
+        return original.apply(this, args);
+      };
+      forceSetProperty(feature, methodKey, logged);
+    }
+  }
 }
 
 /**
