@@ -378,18 +378,90 @@ function detectActiveFreezeAuthority(
 }
 
 /**
+ * Confusable Cyrillic and Greek letters that render identically (or near
+ * identically) to Latin letters in most fonts. NFKD normalization does NOT
+ * collapse these because they are distinct letters in their own scripts, not
+ * compatibility equivalents of Latin. Scammers use them to spoof token
+ * symbols (e.g. "USDС" where the final C is Cyrillic С U+0421).
+ *
+ * Limited to the lowercase forms because normalizeSymbol lowercases via
+ * toUpperCase → map → toUpperCase pattern; but simpler is to cover both
+ * cases explicitly here so we can apply the map before case folding.
+ */
+const SYMBOL_CONFUSABLES: Record<string, string> = {
+  // Cyrillic → Latin
+  "\u0430": "a", "\u0410": "A", // а А
+  "\u0441": "c", "\u0421": "C", // с С
+  "\u0435": "e", "\u0415": "E", // е Е
+  "\u043e": "o", "\u041e": "O", // о О
+  "\u0440": "p", "\u0420": "P", // р Р
+  "\u0445": "x", "\u0425": "X", // х Х
+  "\u0443": "y", "\u0423": "Y", // у У
+  "\u043a": "k", "\u041a": "K", // к К
+  "\u043c": "m", "\u041c": "M", // м М
+  "\u0432": "B", // в looks like lowercase but maps to B uppercase via looks
+  "\u0412": "B", // В
+  "\u043d": "H", "\u041d": "H", // н Н
+  "\u0442": "T", "\u0422": "T", // т Т
+  "\u0456": "i", "\u0406": "I", // і І
+  "\u0458": "j", "\u0408": "J", // ј Ј
+  "\u0455": "s", "\u0405": "S", // ѕ Ѕ
+  // Greek → Latin
+  "\u0391": "A", // Α
+  "\u0392": "B", // Β
+  "\u0395": "E", // Ε
+  "\u0396": "Z", // Ζ
+  "\u0397": "H", // Η
+  "\u0399": "I", // Ι
+  "\u039a": "K", // Κ
+  "\u039c": "M", // Μ
+  "\u039d": "N", // Ν
+  "\u039f": "O", // Ο
+  "\u03a1": "P", // Ρ
+  "\u03a4": "T", // Τ
+  "\u03a5": "Y", // Υ
+  "\u03a7": "X", // Χ
+  "\u03bf": "o", // ο
+};
+
+/**
+ * Normalizes a token symbol for canonical lookup. Applied before comparing
+ * against CANONICAL_TOKENS so scammers can't evade the check via Unicode
+ * tricks. The pipeline is ordered deliberately:
+ *
+ *  1. NFKD — decomposes ligatures, fullwidth forms, and compatibility chars
+ *     (e.g. "ＵＳＤＣ" → "USDC", "ﬁ" → "fi").
+ *  2. Strip zero-width and invisible formatting characters so "US\u200DDC"
+ *     collapses to "USDC".
+ *  3. Map Cyrillic/Greek confusables to Latin — NFKD does NOT do this because
+ *     they are distinct letters in their own scripts, not decomposition
+ *     equivalents. We use a hand-curated SYMBOL_CONFUSABLES table.
+ *  4. Uppercase for case-insensitive lookup.
+ */
+function normalizeSymbol(symbol: string): string {
+  const decomposed = symbol.normalize("NFKD");
+  const stripped = decomposed.replace(/[\u200B-\u200F\u2060\uFEFF\u00AD]/g, "");
+  let mapped = "";
+  for (const char of stripped) {
+    mapped += SYMBOL_CONFUSABLES[char] ?? char;
+  }
+  return mapped.toUpperCase();
+}
+
+/**
  * Detects tokens that claim a canonical symbol (USDC, USDT, etc.) but whose
  * mint address doesn't match the real one. Scammers use this pattern to
  * airdrop worthless copycat tokens or swap-output them into user wallets.
  *
- * Uses the hardcoded CANONICAL_TOKENS table as ground truth — the false
- * positive rate on legit tokens claiming a popular symbol is effectively
- * zero for the entries in that table.
+ * Uses the hardcoded CANONICAL_TOKENS table as ground truth, with the
+ * symbol first normalized through NFKD + zero-width stripping + Cyrillic /
+ * Greek confusable mapping so spoofed symbols like "USDС" (Cyrillic final)
+ * or "ＵＳＤＣ" (fullwidth) are caught before the lookup.
  */
 function detectImpersonatorToken(balanceChanges: BalanceChange[]): RiskWarning[] {
   for (const change of balanceChanges) {
     if (!change.symbol) continue;
-    const symbolKey = change.symbol.toUpperCase();
+    const symbolKey = normalizeSymbol(change.symbol);
     const canonicalMint = CANONICAL_TOKENS[symbolKey];
     if (!canonicalMint) continue;
     if (change.mint === canonicalMint) continue;

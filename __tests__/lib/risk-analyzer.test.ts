@@ -1072,4 +1072,102 @@ describe("detectImpersonatorToken", () => {
     );
     expect(warnings.some((w) => w.title === "Impersonator Token")).toBe(false);
   });
+
+  it("fires on a Cyrillic-С impersonator (USDС with final Cyrillic С)", () => {
+    // Reason: "USDС" where С is U+0421 (Cyrillic Es). Looks identical to
+    // Latin C in nearly every font, but .toUpperCase() and exact-match both
+    // miss it. normalizeSymbol's confusable map must collapse it to Latin C.
+    const change: BalanceChange = {
+      mint: FAKE_USDC_MINT,
+      symbol: "USD\u0421", // U+0421 instead of U+0043
+      name: "Fake",
+      amount: 100,
+      decimals: 6,
+      logoURI: null,
+    };
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      [change],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      EMPTY_INFO_MAP,
+    );
+    expect(warnings.some((w) => w.title === "Impersonator Token")).toBe(true);
+  });
+
+  it("fires on a fullwidth impersonator (ＵＳＤＣ)", () => {
+    // Reason: fullwidth forms (U+FF21..U+FF5A etc) are compatibility
+    // equivalents of Latin, so NFKD decomposes them directly.
+    const change: BalanceChange = {
+      mint: FAKE_USDC_MINT,
+      symbol: "\uFF35\uFF33\uFF24\uFF23", // ＵＳＤＣ
+      name: "Fake",
+      amount: 100,
+      decimals: 6,
+      logoURI: null,
+    };
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      [change],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      EMPTY_INFO_MAP,
+    );
+    expect(warnings.some((w) => w.title === "Impersonator Token")).toBe(true);
+  });
+
+  it("fires on a zero-width-joiner impersonator (US\\u200DDC)", () => {
+    // Reason: zero-width joiner between characters is invisible in most
+    // fonts but breaks exact string match. normalizeSymbol strips it.
+    const change: BalanceChange = {
+      mint: FAKE_USDC_MINT,
+      symbol: "US\u200DDC",
+      name: "Fake",
+      amount: 100,
+      decimals: 6,
+      logoURI: null,
+    };
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      [change],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      EMPTY_INFO_MAP,
+    );
+    expect(warnings.some((w) => w.title === "Impersonator Token")).toBe(true);
+  });
+
+  it("fires on a Greek-letter impersonator (PYTH with Greek Υ and Η)", () => {
+    // Reason: the canonical table has PYTH. A scammer can use Greek Υ (Upsilon,
+    // U+03A5) for Y and Greek Η (Eta, U+0397) for H. Normalization maps both
+    // back to Latin Y and H.
+    const change: BalanceChange = {
+      mint: "FakePythMint111111111111111111111111111111",
+      symbol: "P\u03A5T\u0397", // PΥTΗ
+      name: "Fake",
+      amount: 100,
+      decimals: 6,
+      logoURI: null,
+    };
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed(),
+      [change],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      EMPTY_INFO_MAP,
+    );
+    expect(warnings.some((w) => w.title === "Impersonator Token")).toBe(true);
+  });
 });
