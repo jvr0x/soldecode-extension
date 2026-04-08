@@ -167,6 +167,7 @@ npm test
 ## Supported Wallets
 
 - **Phantom** (via legacy `window.solana` and Wallet Standard)
+- **Jupiter Wallet** (via Wallet Standard)
 
 Other wallets (Solflare, Backpack, Brave Wallet) are not yet supported.
 
