@@ -168,8 +168,10 @@ npm test
 
 - **Phantom** (via legacy `window.solana` and Wallet Standard)
 - **Jupiter Wallet** (via Wallet Standard)
+- **Solflare** (via Wallet Standard)
+- **Backpack** (via Wallet Standard)
 
-Other wallets (Solflare, Backpack, Brave Wallet) are not yet supported.
+Brave Wallet is not yet verified.
 
 ### Gasless / Multi-Transaction Flows
 
