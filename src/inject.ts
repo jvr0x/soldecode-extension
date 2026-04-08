@@ -94,7 +94,9 @@ function serializeTransaction(tx: unknown): string | null {
 
 /**
  * Sends a transaction to the content script for simulation and waits for user decision.
- * Auto-proceeds after 30 seconds to avoid blocking the user indefinitely.
+ * Auto-rejects after 30 seconds — failing closed is the correct default for a
+ * security tool. A slow or crashed service worker must not become a path around
+ * the preview.
  * Returns "PROCEED" or "REJECT".
  */
 function requestSimulation(base64Tx: string, userPubkey: string | null): Promise<"PROCEED" | "REJECT"> {
@@ -113,11 +115,16 @@ function requestSimulation(base64Tx: string, userPubkey: string | null): Promise
       "*",
     );
 
-    // Reason: never block the user — auto-proceed if no response after 30s.
+    // Reason: fail closed on timeout. If the service worker is stalled, hung,
+    // or being flooded by a hostile page, silently auto-proceeding would let a
+    // tx through without any preview — the exact thing the extension exists
+    // to prevent. Auto-rejecting is the safer default; the user can always
+    // retry the signing flow.
     setTimeout(() => {
       if (pendingRequests.has(id)) {
+        console.log("[SolDecode] simulation timed out after 30s — auto-rejecting transaction");
         pendingRequests.delete(id);
-        resolve("PROCEED");
+        resolve("REJECT");
       }
     }, 30_000);
   });
