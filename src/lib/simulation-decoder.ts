@@ -272,6 +272,9 @@ function buildSummary(balanceChanges: BalanceChange[], failed: boolean): string 
  *                       intentionally fee-blind: fee math depends on the raw
  *                       tx bytes (compute budget instructions, signatures),
  *                       which the caller already has access to.
+ * @param knownContacts - Addresses the user has previously sent to. Loaded
+ *                        asynchronously by the service worker and passed in as
+ *                        a plain array so this function stays synchronous-safe.
  */
 export async function decodeSimulation(
   sim: SimulationResult,
@@ -279,6 +282,7 @@ export async function decodeSimulation(
   userPubkey: string,
   origin: string,
   estimatedFee: number,
+  knownContacts: string[] = [],
 ): Promise<SimulatedPreview> {
   const failed = sim.err !== null;
   const accountKeys = parsed.accountKeys;
@@ -326,6 +330,7 @@ export async function decodeSimulation(
     sim.unitsConsumed,
     accountKeys,
     tokenInfoMap,
+    knownContacts,
   );
 
   // Detect error source from logs to enable program-specific error mapping.

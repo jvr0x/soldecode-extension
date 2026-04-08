@@ -92,6 +92,12 @@ export const CANONICAL_TOKENS: Record<string, string> = {
 /** Default Helius RPC endpoint (user provides their own key). */
 export const DEFAULT_RPC_ENDPOINT = "https://mainnet.helius-rpc.com/?api-key=";
 
+/** Maximum number of addresses retained in the known_contacts store. */
+export const MAX_KNOWN_CONTACTS = 500;
+
+/** chrome.storage.local key used for the known-contacts list. */
+export const KNOWN_CONTACTS_KEY = "known_contacts";
+
 /** SOL token info for display. Used as the fallback when network lookups fail. */
 export const SOL_TOKEN: TokenInfo = {
   address: SOL_MINT,

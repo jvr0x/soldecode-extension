@@ -7,7 +7,8 @@ import { simulateTransaction, getSignatureStatus, getTransaction } from "./lib/s
 import { decodeSimulation } from "./lib/simulation-decoder";
 import { calculateFeeSol, getFeeInputs, BASE_LAMPORTS_PER_SIGNATURE } from "./lib/fee-calculator";
 import { parseTransaction } from "./lib/tx-parser";
-import { LAMPORTS_PER_SOL } from "./lib/constants";
+import { LAMPORTS_PER_SOL, KNOWN_CONTACTS_KEY, MAX_KNOWN_CONTACTS } from "./lib/constants";
+import { extractOutgoingDestinations } from "./lib/transfer-extractor";
 import type { ExtensionSettings, SimulatedPreview } from "./types";
 
 /**
@@ -18,8 +19,55 @@ import type { ExtensionSettings, SimulatedPreview } from "./types";
 const pendingPreviews = new Map<string, {
   preview: SimulatedPreview;
   userPubkey: string;
+  stagedDestinations: string[];
   expiresAt: number;
 }>();
+
+/** In-memory cache of known-contact addresses, loaded lazily on first read. */
+let cachedContacts: string[] | null = null;
+
+/**
+ * Loads the known-contacts list from chrome.storage.local the first time
+ * it is needed and caches in memory for the rest of the service worker
+ * lifetime. Lazy so we don't block service worker startup.
+ */
+async function getKnownContacts(): Promise<string[]> {
+  if (cachedContacts !== null) return cachedContacts;
+  try {
+    const data = await chrome.storage.local.get(KNOWN_CONTACTS_KEY);
+    const stored = data[KNOWN_CONTACTS_KEY];
+    cachedContacts = Array.isArray(stored) ? (stored as string[]) : [];
+  } catch {
+    cachedContacts = [];
+  }
+  return cachedContacts;
+}
+
+/**
+ * Appends new destinations to the known-contacts list, deduplicates while
+ * preserving "most recent at end" order, enforces MAX_KNOWN_CONTACTS by
+ * dropping oldest entries, persists to chrome.storage.local, and updates
+ * the in-memory cache.
+ */
+async function commitContacts(newDestinations: string[]): Promise<void> {
+  if (newDestinations.length === 0) return;
+  const current = await getKnownContacts();
+  // Reason: remove any prior occurrences of the new destinations so they
+  // end up at the back of the list (most recently used).
+  const newSet = new Set(newDestinations);
+  const withoutNew = current.filter((c) => !newSet.has(c));
+  const merged = [...withoutNew, ...newDestinations];
+  // Enforce cap by dropping oldest.
+  const capped = merged.length > MAX_KNOWN_CONTACTS
+    ? merged.slice(merged.length - MAX_KNOWN_CONTACTS)
+    : merged;
+  cachedContacts = capped;
+  try {
+    await chrome.storage.local.set({ [KNOWN_CONTACTS_KEY]: capped });
+  } catch (e) {
+    console.warn("[SolDecode] Failed to persist contacts:", e);
+  }
+}
 
 /**
  * Removes stale entries from pendingPreviews. Called opportunistically on
@@ -96,17 +144,23 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           ? calculateFeeSol(feeInputs, simResult.unitsConsumed)
           : BASE_LAMPORTS_PER_SIGNATURE / LAMPORTS_PER_SOL;
 
+        const knownContacts = await getKnownContacts();
+
         const preview = await decodeSimulation(
           simResult,
           parsed,
           userPubkey,
           origin,
           estimatedFee,
+          knownContacts,
         );
+
+        const stagedDestinations = extractOutgoingDestinations(parsed, userPubkey);
 
         pendingPreviews.set(id, {
           preview,
           userPubkey,
+          stagedDestinations,
           expiresAt: Date.now() + 5 * 60 * 1000,
         });
         sendResponse({ type: "SIMULATE_RESULT", id, preview });
@@ -144,7 +198,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         newestExpiry = entry.expiresAt;
       }
     }
-    if (matchedKey) pendingPreviews.delete(matchedKey);
+    if (matchedKey) {
+      const entry = pendingPreviews.get(matchedKey);
+      if (entry && entry.stagedDestinations.length > 0) {
+        // Reason: only commit contacts after the wallet actually returned a
+        // signature (which is what TRACK_TX proves). A rejected or dropped
+        // tx should NOT end up poisoning the contacts store.
+        commitContacts(entry.stagedDestinations).catch((e) => {
+          console.warn("[SolDecode] commitContacts failed:", e);
+        });
+      }
+      pendingPreviews.delete(matchedKey);
+    }
 
     trackAndReport(signature, trackPubkey ?? "", matchedPreview, tabId).catch((err) => {
       console.warn("[SolDecode] trackAndReport failed:", err);

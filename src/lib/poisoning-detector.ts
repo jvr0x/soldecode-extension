@@ -2,10 +2,14 @@ import type { PoisoningResult } from "@/types";
 import { DUST_THRESHOLD_LAMPORTS, POISONING_MATCH_CHARS } from "./constants";
 
 /**
- * Checks if a sender address shares the first N and last N characters with
- * any known contact address.
+ * Checks if an address shares the first N and last N characters with any
+ * address in a known-contact list. Returns the matched contact address, or
+ * null when no match is found.
+ *
+ * Public API: used by both the standalone poisoning detector and the
+ * lookalike-destination detector in risk-analyzer.
  */
-function matchesKnownContact(
+export function matchesKnownContact(
   sender: string,
   contacts: string[],
   matchChars: number,

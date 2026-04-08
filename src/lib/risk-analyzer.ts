@@ -28,10 +28,12 @@ import {
   STAKE_PROGRAM_ID,
   LAMPORTS_PER_SOL,
   CANONICAL_TOKENS,
+  POISONING_MATCH_CHARS,
 } from "./constants";
 import type { TxFeeInputs } from "./fee-calculator";
 import { readU64LEBigInt } from "./tx-parser";
-import { detectStandalonePoisoning } from "./poisoning-detector";
+import { detectStandalonePoisoning, matchesKnownContact } from "./poisoning-detector";
+import { extractOutgoingDestinations } from "./transfer-extractor";
 
 /** SOL outflow threshold above which a transfer is flagged as high-value. */
 const HIGH_VALUE_SOL_THRESHOLD = 10;
@@ -694,6 +696,51 @@ function detectStakeAuthorize(parsed: ParsedTransaction): RiskWarning[] {
 }
 
 /**
+ * Detects outgoing transfers whose destination is similar — but not equal —
+ * to an address the user has previously sent to. This is the real
+ * address-poisoning attack vector: scammers generate lookalike addresses
+ * (same first and last 4 chars) and hope the user copies the wrong one
+ * from their wallet history. A naive copy-paste from history lands in a
+ * stranger's wallet.
+ *
+ * Fires at critical severity because the false-positive rate is
+ * negligible — the probability of a random new address colliding on
+ * first/last 4 chars with any of the user's ~hundreds of known contacts
+ * is vanishingly small (base58^4 ≈ 11M combinations per end, squared if
+ * both ends must match).
+ */
+function detectLookalikeDestination(
+  parsed: ParsedTransaction,
+  userPubkey: string,
+  knownContacts: string[],
+): RiskWarning[] {
+  if (knownContacts.length === 0) return [];
+  const destinations = extractOutgoingDestinations(parsed, userPubkey);
+  for (const dest of destinations) {
+    const match = matchesKnownContact(dest, knownContacts, POISONING_MATCH_CHARS);
+    if (match) {
+      const shortDest = `${dest.slice(0, 4)}…${dest.slice(-4)}`;
+      const shortMatch = `${match.slice(0, 4)}…${match.slice(-4)}`;
+      return [
+        {
+          severity: "critical",
+          title: "Possible Lookalike Destination",
+          description:
+            `This transaction sends to ${shortDest}, which starts and ends with ` +
+            `the same characters as ${shortMatch} — a wallet you have previously ` +
+            `sent to. The two addresses are NOT the same. If you copied this ` +
+            `destination from your wallet history, STOP: a scammer may have ` +
+            `generated a lookalike to trick you into sending funds to them. ` +
+            `Verify the full address with your intended recipient via another ` +
+            `channel before proceeding.`,
+        },
+      ];
+    }
+  }
+  return [];
+}
+
+/**
  * Runs the full risk analyzer suite over a parsed transaction and returns
  * the aggregated warnings plus an overall risk level.
  *
@@ -707,6 +754,9 @@ function detectStakeAuthorize(parsed: ParsedTransaction): RiskWarning[] {
  * @param tokenInfoMap - Resolved TokenInfo for every mint in balanceChanges.
  *                       Powers the metadata-driven detectors (mint authority,
  *                       freeze authority, liquidity, holder count, USD asymmetry).
+ * @param knownContacts - Addresses the user has previously sent to, used by
+ *                        the lookalike-destination detector. Pass an empty array
+ *                        when no contact history is available.
  */
 export function analyzeRisks(
   sim: SimulationResult,
@@ -717,6 +767,7 @@ export function analyzeRisks(
   unitsConsumed: number,
   accountKeys: string[],
   tokenInfoMap: Map<string, TokenInfo>,
+  knownContacts: string[],
 ): { risk: RiskLevel; warnings: RiskWarning[] } {
   const warnings: RiskWarning[] = [];
 
@@ -725,6 +776,7 @@ export function analyzeRisks(
   warnings.push(...detectAccountOwnerHijack(parsed, userPubkey));
   warnings.push(...detectMintAuthorityChange(parsed));
   warnings.push(...detectCloseAccountToOther(parsed, userPubkey));
+  warnings.push(...detectLookalikeDestination(parsed, userPubkey, knownContacts));
   warnings.push(...detectStakeAuthorize(parsed));
 
   // Balance-side detectors.

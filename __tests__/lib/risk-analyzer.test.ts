@@ -116,6 +116,7 @@ describe("analyzeRisks — baseline", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(risk).toBe("SAFE");
     expect(warnings).toEqual([]);
@@ -134,6 +135,7 @@ describe("analyzeRisks — baseline", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(risk).toBe("WARNING");
     expect(warnings.some((w) => w.title.toLowerCase().includes("high value"))).toBe(true);
@@ -152,6 +154,7 @@ describe("analyzeRisks — baseline", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(risk).toBe("SAFE");
   });
@@ -169,6 +172,7 @@ describe("detectUnlimitedApproval", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(risk).toBe("WARNING");
     expect(warnings[0].title).toContain("Unlimited");
@@ -186,6 +190,7 @@ describe("detectUnlimitedApproval", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Unlimited"))).toBe(true);
   });
@@ -202,6 +207,7 @@ describe("detectUnlimitedApproval", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Unlimited"))).toBe(false);
   });
@@ -221,6 +227,7 @@ describe("detectAccountOwnerHijack", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Ownership"))).toBe(true);
   });
@@ -238,6 +245,7 @@ describe("detectAccountOwnerHijack", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Ownership"))).toBe(false);
   });
@@ -256,6 +264,7 @@ describe("detectMintAuthorityChange", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     const mintWarning = warnings.find((w) => w.title.includes("Mint"));
     expect(mintWarning).toBeDefined();
@@ -274,6 +283,7 @@ describe("detectMintAuthorityChange", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Freeze"))).toBe(true);
   });
@@ -295,6 +305,7 @@ describe("detectCloseAccountToOther", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Foreign"))).toBe(true);
   });
@@ -314,6 +325,7 @@ describe("detectCloseAccountToOther", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Foreign"))).toBe(false);
   });
@@ -350,6 +362,7 @@ describe("detectDrainHeuristic", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Drain"))).toBe(true);
   });
@@ -384,6 +397,7 @@ describe("detectDrainHeuristic", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Drain"))).toBe(false);
   });
@@ -402,6 +416,7 @@ describe("detectDrainHeuristic", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("SOL Drain"))).toBe(true);
   });
@@ -420,6 +435,7 @@ describe("detectDrainHeuristic", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("SOL Drain"))).toBe(false);
   });
@@ -442,6 +458,7 @@ describe("detectOversizedPriorityFee", () => {
       100_000_000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Oversized Priority"))).toBe(true);
   });
@@ -461,6 +478,7 @@ describe("detectOversizedPriorityFee", () => {
       150_000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Oversized Priority"))).toBe(false);
   });
@@ -482,6 +500,7 @@ describe("detectMultiAssetDrain", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Multiple Assets"))).toBe(true);
   });
@@ -500,6 +519,7 @@ describe("detectMultiAssetDrain", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Multiple Assets"))).toBe(false);
   });
@@ -517,6 +537,7 @@ describe("detectStakeAuthorize", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     const stakeWarning = warnings.find((w) => w.title.includes("Stake"));
     expect(stakeWarning).toBeDefined();
@@ -534,6 +555,7 @@ describe("detectStakeAuthorize", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Stake"))).toBe(true);
   });
@@ -549,6 +571,7 @@ describe("detectStakeAuthorize", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Stake"))).toBe(false);
   });
@@ -570,6 +593,7 @@ describe("detectActiveMintAuthority", () => {
       5000,
       [USER_PUBKEY],
       map,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Mint Authority Active"))).toBe(true);
   });
@@ -589,6 +613,7 @@ describe("detectActiveMintAuthority", () => {
       5000,
       [USER_PUBKEY],
       map,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Mint Authority Active"))).toBe(false);
   });
@@ -609,6 +634,7 @@ describe("detectActiveMintAuthority", () => {
       5000,
       [USER_PUBKEY],
       map,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Mint Authority Active"))).toBe(false);
   });
@@ -630,6 +656,7 @@ describe("detectActiveFreezeAuthority", () => {
       5000,
       [USER_PUBKEY],
       map,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Freeze Authority Active"))).toBe(true);
   });
@@ -649,6 +676,7 @@ describe("detectActiveFreezeAuthority", () => {
       5000,
       [USER_PUBKEY],
       map,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Freeze Authority Active"))).toBe(false);
   });
@@ -670,6 +698,7 @@ describe("detectLowLiquidity", () => {
       5000,
       [USER_PUBKEY],
       map,
+      [],
     );
     const warning = warnings.find((w) => w.title.includes("Low Liquidity"));
     expect(warning).toBeDefined();
@@ -691,6 +720,7 @@ describe("detectLowLiquidity", () => {
       5000,
       [USER_PUBKEY],
       map,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Low Liquidity"))).toBe(false);
   });
@@ -710,6 +740,7 @@ describe("detectLowLiquidity", () => {
       5000,
       [USER_PUBKEY],
       map,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Low Liquidity"))).toBe(false);
   });
@@ -731,6 +762,7 @@ describe("detectFreshOrUnknownToken", () => {
       5000,
       [USER_PUBKEY],
       map,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Fresh Token"))).toBe(true);
   });
@@ -750,6 +782,7 @@ describe("detectFreshOrUnknownToken", () => {
       5000,
       [USER_PUBKEY],
       map,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Unknown Token"))).toBe(true);
   });
@@ -769,6 +802,7 @@ describe("detectFreshOrUnknownToken", () => {
       5000,
       [USER_PUBKEY],
       map,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Fresh Token") || w.title.includes("Unknown Token"))).toBe(false);
   });
@@ -795,6 +829,7 @@ describe("detectUsdValueAsymmetry", () => {
       5000,
       [USER_PUBKEY],
       map,
+      [],
     );
     const w = warnings.find((x) => x.title.includes("Asymmetry") || x.title.includes("Severe Value"));
     expect(w).toBeDefined();
@@ -820,6 +855,7 @@ describe("detectUsdValueAsymmetry", () => {
       5000,
       [USER_PUBKEY],
       map,
+      [],
     );
     const critical = warnings.find((w) => w.severity === "critical" && w.title.includes("Severe Value"));
     expect(critical).toBeDefined();
@@ -845,6 +881,7 @@ describe("detectUsdValueAsymmetry", () => {
       5000,
       [USER_PUBKEY],
       map,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Asymmetry") || w.title.includes("Severe Value"))).toBe(false);
   });
@@ -872,6 +909,7 @@ describe("detectUsdValueAsymmetry", () => {
       5000,
       [USER_PUBKEY],
       map,
+      [],
     );
     // 100 USDC out vs 0.0014 * 70000 = $98 in → ratio ~1.02, no warning.
     expect(warnings.some((w) => w.title.includes("Asymmetry") || w.title.includes("Severe Value"))).toBe(false);
@@ -897,6 +935,7 @@ describe("detectUsdValueAsymmetry", () => {
       5000,
       [USER_PUBKEY],
       map,
+      [],
     );
     expect(warnings.some((w) => w.title.includes("Asymmetry") || w.title.includes("Severe Value"))).toBe(false);
   });
@@ -917,6 +956,7 @@ describe("warning aggregation", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     // Both "Unlimited Token Approval" and "High Value Transaction" should fire.
     expect(warnings.length).toBeGreaterThanOrEqual(2);
@@ -938,6 +978,7 @@ describe("detectDustSolReceipt", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title === "Sub-Dust Incoming Transfer")).toBe(true);
   });
@@ -956,6 +997,7 @@ describe("detectDustSolReceipt", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title === "Sub-Dust Incoming Transfer")).toBe(false);
   });
@@ -974,6 +1016,7 @@ describe("detectDustSolReceipt", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title === "Sub-Dust Incoming Transfer")).toBe(false);
   });
@@ -1001,6 +1044,7 @@ describe("detectImpersonatorToken", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     const w = warnings.find((x) => x.title === "Impersonator Token");
     expect(w).toBeDefined();
@@ -1025,6 +1069,7 @@ describe("detectImpersonatorToken", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title === "Impersonator Token")).toBe(false);
   });
@@ -1047,6 +1092,7 @@ describe("detectImpersonatorToken", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title === "Impersonator Token")).toBe(true);
   });
@@ -1069,6 +1115,7 @@ describe("detectImpersonatorToken", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title === "Impersonator Token")).toBe(false);
   });
@@ -1094,6 +1141,7 @@ describe("detectImpersonatorToken", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title === "Impersonator Token")).toBe(true);
   });
@@ -1118,6 +1166,7 @@ describe("detectImpersonatorToken", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title === "Impersonator Token")).toBe(true);
   });
@@ -1142,6 +1191,7 @@ describe("detectImpersonatorToken", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title === "Impersonator Token")).toBe(true);
   });
@@ -1167,7 +1217,121 @@ describe("detectImpersonatorToken", () => {
       5000,
       [USER_PUBKEY],
       EMPTY_INFO_MAP,
+      [],
     );
     expect(warnings.some((w) => w.title === "Impersonator Token")).toBe(true);
+  });
+});
+
+// ── Helper: build a System Program Transfer instruction ───────────────────────
+
+const SYSTEM_PROGRAM_ID = "11111111111111111111111111111111";
+const TOKEN_PROGRAM_ID_TEST = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+
+/** Builds a System Program Transfer instruction (disc u32 LE = 2). */
+function systemTransferInstruction(from: string, to: string): ParsedInstruction {
+  return {
+    programIdIndex: 0,
+    programId: SYSTEM_PROGRAM_ID,
+    accountIndices: [],
+    accounts: [from, to],
+    // u32 LE encoding of discriminator 2: [0x02, 0x00, 0x00, 0x00]
+    data: new Uint8Array([0x02, 0x00, 0x00, 0x00]),
+  };
+}
+
+/** Builds an SPL Token TransferChecked instruction (first byte = 12). */
+function tokenTransferCheckedInstruction(
+  src: string,
+  mint: string,
+  dst: string,
+  authority: string,
+): ParsedInstruction {
+  return {
+    programIdIndex: 0,
+    programId: TOKEN_PROGRAM_ID_TEST,
+    accountIndices: [],
+    accounts: [src, mint, dst, authority],
+    data: new Uint8Array([12, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 6]),
+  };
+}
+
+describe("detectLookalikeDestination", () => {
+  // Two addresses that share first 4 chars ("AAAA") and last 4 chars ("XXXX")
+  // but differ in the middle — classic poison pair.
+  const REAL_CONTACT = "AAAAbbbbccccddddeeeeffffgggghhhhiiiijjjjXXXX";
+  const LOOKALIKE    = "AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJjXXXX";
+
+  it("fires at critical when a System Program Transfer targets a lookalike of a known contact", () => {
+    const inst = systemTransferInstruction(USER_PUBKEY, LOOKALIKE);
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed([inst], [USER_PUBKEY, LOOKALIKE]),
+      [],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      EMPTY_INFO_MAP,
+      [REAL_CONTACT],
+    );
+    const w = warnings.find((x) => x.title === "Possible Lookalike Destination");
+    expect(w).toBeDefined();
+    expect(w!.severity).toBe("critical");
+  });
+
+  it("does NOT fire when the destination equals the known contact exactly", () => {
+    // Sending to the real address is fine — matchesKnownContact skips exact equals.
+    const inst = systemTransferInstruction(USER_PUBKEY, REAL_CONTACT);
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed([inst], [USER_PUBKEY, REAL_CONTACT]),
+      [],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      EMPTY_INFO_MAP,
+      [REAL_CONTACT],
+    );
+    expect(warnings.some((w) => w.title === "Possible Lookalike Destination")).toBe(false);
+  });
+
+  it("does NOT fire when knownContacts is empty", () => {
+    const inst = systemTransferInstruction(USER_PUBKEY, LOOKALIKE);
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed([inst], [USER_PUBKEY, LOOKALIKE]),
+      [],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      EMPTY_INFO_MAP,
+      [],
+    );
+    expect(warnings.some((w) => w.title === "Possible Lookalike Destination")).toBe(false);
+  });
+
+  it("fires on an SPL Token TransferChecked whose destination (accounts[2]) is a lookalike", () => {
+    const MINT = "MintXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+    const inst = tokenTransferCheckedInstruction(
+      USER_PUBKEY, // source token account
+      MINT,        // mint (accounts[1])
+      LOOKALIKE,   // destination token account (accounts[2])
+      USER_PUBKEY, // authority (accounts[3])
+    );
+    const { warnings } = analyzeRisks(
+      makeSim(),
+      makeParsed([inst], [USER_PUBKEY, MINT, LOOKALIKE]),
+      [],
+      USER_PUBKEY,
+      ZERO_FEE_INPUTS,
+      5000,
+      [USER_PUBKEY],
+      EMPTY_INFO_MAP,
+      [REAL_CONTACT],
+    );
+    expect(warnings.some((w) => w.title === "Possible Lookalike Destination")).toBe(true);
   });
 });
