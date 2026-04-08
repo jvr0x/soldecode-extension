@@ -381,12 +381,17 @@ function wrapStandardWallet(wallet: Record<string, unknown>): Record<string, unk
   if (initialPubkey) lastKnownUserPubkey = initialPubkey;
 
   // --- Phase 1 discovery instrumentation (temporary — remove in Task 4) ---
+  // Reason: wrapped in try/catch as a whole because instrumentAllSolanaFeatures
+  // walks wallet-provided Proxy objects whose traps could throw; we must not
+  // short-circuit the real signTransaction / signAndSendTransaction wraps below.
   const walletName = (wallet as { name?: string }).name ?? "unknown";
   try {
     const featureKeys = Object.keys(features);
     console.log(`[SolDecode] ${walletName} features: ${featureKeys.join(", ")}`);
-  } catch { /* ignore */ }
-  instrumentAllSolanaFeatures(features, walletName);
+    instrumentAllSolanaFeatures(features, walletName);
+  } catch (e) {
+    console.log("[SolDecode] instrumentation failed:", (e as Error).message);
+  }
   // --- end instrumentation ---
 
   // Intercept solana:signTransaction
