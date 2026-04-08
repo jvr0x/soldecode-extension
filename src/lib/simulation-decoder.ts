@@ -4,11 +4,13 @@ import type {
   BalanceChange,
   PreviewStep,
   RiskLevel,
+  ParsedTransaction,
 } from "@/types";
 import { getTokenInfo } from "./token-cache";
 import { mapError } from "./error-mapper";
 import { parseInstructionLogs } from "./instruction-parser";
 import { analyzeRisks } from "./risk-analyzer";
+import { getFeeInputs } from "./fee-calculator";
 import {
   SOL_MINT,
   LAMPORTS_PER_SOL,
@@ -262,8 +264,8 @@ function buildSummary(balanceChanges: BalanceChange[], failed: boolean): string 
  * and error mapping into a single human-readable structure.
  *
  * @param sim - Raw RPC simulation response.
+ * @param parsed - Structurally parsed transaction (account keys + instructions).
  * @param userPubkey - The wallet address to track balance changes for.
- * @param accountKeys - Ordered account keys from the transaction message.
  * @param origin - The dApp URL that triggered the simulation.
  * @param estimatedFee - Pre-computed transaction fee in SOL. The decoder is
  *                       intentionally fee-blind: fee math depends on the raw
@@ -272,12 +274,13 @@ function buildSummary(balanceChanges: BalanceChange[], failed: boolean): string 
  */
 export async function decodeSimulation(
   sim: SimulationResult,
+  parsed: ParsedTransaction,
   userPubkey: string,
-  accountKeys: string[],
   origin: string,
   estimatedFee: number,
 ): Promise<SimulatedPreview> {
   const failed = sim.err !== null;
+  const accountKeys = parsed.accountKeys;
 
   // Compute balance changes for the user's accounts.
   const solChange = computeSolChange(sim, userPubkey, accountKeys);
@@ -299,8 +302,18 @@ export async function decodeSimulation(
   // Parse top-level program invocations from logs into step descriptions.
   const steps = parseInstructionLogs(sim.logs ?? []);
 
-  // Run risk analysis over logs and balance changes.
-  const { risk, warnings } = analyzeRisks(sim, balanceChanges);
+  // Risk analysis: structural detectors over the parsed instruction list,
+  // plus fee-side and balance-side heuristics.
+  const feeInputs = getFeeInputs(parsed);
+  const { risk, warnings } = analyzeRisks(
+    sim,
+    parsed,
+    balanceChanges,
+    userPubkey,
+    feeInputs,
+    sim.unitsConsumed,
+    accountKeys,
+  );
 
   // Detect error source from logs to enable program-specific error mapping.
   // Reason: mapError needs "JUPITER" to translate Jupiter custom error codes.

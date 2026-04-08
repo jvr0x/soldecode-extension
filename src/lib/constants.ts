@@ -29,6 +29,9 @@ export const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 /** Token-2022 Program address. */
 export const TOKEN_2022_PROGRAM_ID = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 
+/** Stake Program address. */
+export const STAKE_PROGRAM_ID = "Stake11111111111111111111111111111111111111";
+
 /** Associated Token Account program — its presence means an ATA is being created. */
 export const ATA_PROGRAM_ID = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 

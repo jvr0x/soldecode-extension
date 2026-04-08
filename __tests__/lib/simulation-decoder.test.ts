@@ -86,6 +86,22 @@ const makeFailedSimResult = (): SimulationResult => ({
 /** Default account-keys list used by the swap fixture above. */
 const SWAP_ACCOUNT_KEYS = [USER_PUBKEY, "ProgramAccount1", "TokenAccount1"];
 
+/** Minimal stub ParsedTransaction wrapping the swap account keys with no instructions. */
+const SWAP_PARSED = {
+  numSignatures: 1,
+  accountKeys: SWAP_ACCOUNT_KEYS,
+  instructions: [],
+  versioned: false,
+};
+
+/** Stub ParsedTransaction for the failed-tx fixture (single account). */
+const SINGLE_ACCOUNT_PARSED = {
+  numSignatures: 1,
+  accountKeys: [USER_PUBKEY],
+  instructions: [],
+  versioned: false,
+};
+
 /** Stable estimated fee passed by service-worker in production; tests use a fixed value. */
 const FIXED_FEE = 0.0000125;
 
@@ -93,8 +109,8 @@ describe("decodeSimulation", () => {
   it("decodes a successful swap simulation", async () => {
     const result = await decodeSimulation(
       makeSwapSimResult(),
+      SWAP_PARSED,
       USER_PUBKEY,
-      SWAP_ACCOUNT_KEYS,
       "https://jup.ag",
       FIXED_FEE,
     );
@@ -117,8 +133,8 @@ describe("decodeSimulation", () => {
   it("uses the caller-provided estimatedFee verbatim", async () => {
     const result = await decodeSimulation(
       makeSwapSimResult(),
+      SWAP_PARSED,
       USER_PUBKEY,
-      SWAP_ACCOUNT_KEYS,
       "https://jup.ag",
       0.0042,
     );
@@ -128,8 +144,8 @@ describe("decodeSimulation", () => {
   it("decodes a failed simulation with error explanation", async () => {
     const result = await decodeSimulation(
       makeFailedSimResult(),
+      SINGLE_ACCOUNT_PARSED,
       USER_PUBKEY,
-      [USER_PUBKEY],
       "https://jup.ag",
       FIXED_FEE,
     );
@@ -142,8 +158,8 @@ describe("decodeSimulation", () => {
   it("includes compute units", async () => {
     const result = await decodeSimulation(
       makeSwapSimResult(),
+      SWAP_PARSED,
       USER_PUBKEY,
-      SWAP_ACCOUNT_KEYS,
       "https://jup.ag",
       FIXED_FEE,
     );
@@ -153,8 +169,8 @@ describe("decodeSimulation", () => {
   it("sets origin correctly", async () => {
     const result = await decodeSimulation(
       makeSwapSimResult(),
+      SWAP_PARSED,
       USER_PUBKEY,
-      SWAP_ACCOUNT_KEYS,
       "https://jup.ag",
       FIXED_FEE,
     );
@@ -164,8 +180,8 @@ describe("decodeSimulation", () => {
   it("ignores balance changes for accounts other than userPubkey", async () => {
     const result = await decodeSimulation(
       makeSwapSimResult(),
+      SWAP_PARSED,
       USER_PUBKEY,
-      SWAP_ACCOUNT_KEYS,
       "https://jup.ag",
       FIXED_FEE,
     );
@@ -179,8 +195,8 @@ describe("decodeSimulation", () => {
   it("produces a summary string for a swap", async () => {
     const result = await decodeSimulation(
       makeSwapSimResult(),
+      SWAP_PARSED,
       USER_PUBKEY,
-      SWAP_ACCOUNT_KEYS,
       "https://jup.ag",
       FIXED_FEE,
     );
@@ -217,8 +233,8 @@ describe("decodeSimulation", () => {
 
     const result = await decodeSimulation(
       sim,
+      SWAP_PARSED,
       USER_PUBKEY,
-      SWAP_ACCOUNT_KEYS,
       "https://jup.ag",
       FIXED_FEE,
     );
@@ -231,8 +247,8 @@ describe("decodeSimulation", () => {
   it("populates plainSteps with at least one bullet", async () => {
     const result = await decodeSimulation(
       makeSwapSimResult(),
+      SWAP_PARSED,
       USER_PUBKEY,
-      SWAP_ACCOUNT_KEYS,
       "https://jup.ag",
       FIXED_FEE,
     );
@@ -242,8 +258,8 @@ describe("decodeSimulation", () => {
   it("plainSteps describes a swap when both outgoing and incoming are present", async () => {
     const result = await decodeSimulation(
       makeSwapSimResult(),
+      SWAP_PARSED,
       USER_PUBKEY,
-      SWAP_ACCOUNT_KEYS,
       "https://jup.ag",
       FIXED_FEE,
     );
@@ -256,8 +272,8 @@ describe("decodeSimulation", () => {
   it("plainSteps reports SOL fees & rent line when SOL outflow is significant", async () => {
     const result = await decodeSimulation(
       makeSwapSimResult(),
+      SWAP_PARSED,
       USER_PUBKEY,
-      SWAP_ACCOUNT_KEYS,
       "https://jup.ag",
       FIXED_FEE,
     );
@@ -268,8 +284,8 @@ describe("decodeSimulation", () => {
   it("plainSteps shows a single failure line on failed simulations", async () => {
     const result = await decodeSimulation(
       makeFailedSimResult(),
+      SINGLE_ACCOUNT_PARSED,
       USER_PUBKEY,
-      [USER_PUBKEY],
       "https://jup.ag",
       FIXED_FEE,
     );
@@ -281,8 +297,8 @@ describe("decodeSimulation", () => {
     // Sanity check that 142.3 doesn't render as 142.300000.
     const result = await decodeSimulation(
       makeSwapSimResult(),
+      SWAP_PARSED,
       USER_PUBKEY,
-      SWAP_ACCOUNT_KEYS,
       "https://jup.ag",
       FIXED_FEE,
     );
