@@ -166,6 +166,13 @@ export interface ExtensionSettings {
   enabled: boolean;
   /** Helius RPC endpoint URL (includes API key). */
   rpcEndpoint: string;
+  /**
+   * Maximum time (ms) the extension waits for a simulation response before
+   * auto-rejecting the transaction. Failing closed is the correct default
+   * for a security tool — a stalled service worker must not become a
+   * silent bypass of the preview. Bounded [10000, 120000], default 30000.
+   */
+  simulationTimeoutMs: number;
 }
 
 /**

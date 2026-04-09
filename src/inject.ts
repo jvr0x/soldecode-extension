@@ -18,6 +18,15 @@ const pendingRequests = new Map<string, {
 let lastKnownUserPubkey: string | null = null;
 
 /**
+ * Simulation timeout in ms, cached from the popup settings. Defaults to
+ * 30_000 until the content-script replies to our SOLDECODE_GET_CONFIG
+ * message at load time. inject.ts runs at document_start before any dApp
+ * script, so by the time a user triggers a sign request this cache is
+ * already populated from the stored setting.
+ */
+let cachedTimeoutMs = 30_000;
+
+/**
  * Tiny base58 encoder used to convert raw 64-byte signatures from
  * Wallet Standard return values into the base58 string format used
  * by Solana RPCs. Self-contained so inject.ts doesn't pull a
@@ -213,14 +222,16 @@ function requestSimulation(base64Tx: string, userPubkey: string | null): Promise
     // or being flooded by a hostile page, silently auto-proceeding would let a
     // tx through without any preview — the exact thing the extension exists
     // to prevent. Auto-rejecting is the safer default; the user can always
-    // retry the signing flow.
+    // retry the signing flow. Timeout is user-configurable via the popup
+    // (10s-120s, default 30s); see cachedTimeoutMs.
+    const timeoutMs = cachedTimeoutMs;
     setTimeout(() => {
       if (pendingRequests.has(id)) {
-        console.log("[SolDecode] simulation timed out after 30s — auto-rejecting transaction");
+        console.log(`[SolDecode] simulation timed out after ${timeoutMs}ms — auto-rejecting transaction`);
         pendingRequests.delete(id);
         resolve("REJECT");
       }
-    }, 30_000);
+    }, timeoutMs);
   });
 }
 
@@ -231,17 +242,26 @@ function requestSimulation(base64Tx: string, userPubkey: string | null): Promise
 window.addEventListener("message", (event) => {
   if (event.source !== window) return;
   const data = event.data as Record<string, unknown> | null;
-  if (
-    typeof data === "object" &&
-    data !== null &&
-    data.type === "SOLDECODE_RESULT" &&
-    typeof data.id === "string"
-  ) {
+  if (typeof data !== "object" || data === null) return;
+
+  if (data.type === "SOLDECODE_RESULT" && typeof data.id === "string") {
     const pending = pendingRequests.get(data.id);
     if (pending) {
       pendingRequests.delete(data.id);
       pending.resolve(data.action as "PROCEED" | "REJECT");
     }
+    return;
+  }
+
+  if (data.type === "SOLDECODE_CONFIG" && typeof data.simulationTimeoutMs === "number") {
+    const ms = data.simulationTimeoutMs;
+    // Clamp defensively — the popup already bounds the value but the
+    // message bus is not a trust boundary we can fully rely on.
+    if (ms >= 10_000 && ms <= 120_000) {
+      cachedTimeoutMs = ms;
+      console.log(`[SolDecode] cached simulation timeout: ${ms}ms`);
+    }
+    return;
   }
 });
 
@@ -695,4 +715,12 @@ function installPostMessageLogger(): void {
 install();
 installWalletStandardInterceptor();
 installPostMessageLogger();
+
+// Kick off the config fetch so we have the user's configured timeout
+// cached before the first sign request fires. Fire-and-forget — the
+// content-script replies with a SOLDECODE_CONFIG message that the
+// existing listener handles. If the reply never arrives, cachedTimeoutMs
+// stays at the 30_000 default.
+window.postMessage({ type: "SOLDECODE_GET_CONFIG" }, "*");
+
 console.log("[SolDecode] inject.ts loaded — all interceptors installed");

@@ -83,9 +83,11 @@ function cleanStalePreviews(): void {
 /** Retrieves extension settings from chrome.storage.local. */
 async function getSettings(): Promise<ExtensionSettings> {
   const data = await chrome.storage.local.get("settings");
-  return (data.settings as ExtensionSettings | undefined) ?? {
-    enabled: true,
-    rpcEndpoint: "",
+  const stored = data.settings as Partial<ExtensionSettings> | undefined;
+  return {
+    enabled: stored?.enabled ?? true,
+    rpcEndpoint: stored?.rpcEndpoint ?? "",
+    simulationTimeoutMs: stored?.simulationTimeoutMs ?? 30_000,
   };
 }
 
@@ -100,6 +102,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         type: "SETTINGS",
         enabled: settings.enabled,
         configured: settings.rpcEndpoint.length > 0,
+        simulationTimeoutMs: settings.simulationTimeoutMs,
       });
     });
     return true; // Signal async response
@@ -410,6 +413,7 @@ chrome.runtime.onInstalled.addListener(async () => {
       settings: {
         enabled: true,
         rpcEndpoint: "",
+        simulationTimeoutMs: 30_000,
       } satisfies ExtensionSettings,
     });
   }

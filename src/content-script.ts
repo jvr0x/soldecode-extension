@@ -54,7 +54,7 @@ window.addEventListener("message", async (event) => {
   try {
     // Check whether the extension is enabled and has an RPC endpoint configured.
     const settingsResponse = await chrome.runtime.sendMessage({ type: "GET_SETTINGS" }) as
-      | { enabled: boolean; configured: boolean }
+      | { enabled: boolean; configured: boolean; simulationTimeoutMs: number }
       | undefined;
 
     console.log("[SolDecode] settings response:", settingsResponse);
@@ -150,6 +150,43 @@ chrome.runtime.onMessage.addListener((message) => {
   const detail = typeof msg.detail === "string" ? msg.detail : "";
   const d = getDrawer();
   showConfirmationToast(d, status, detail);
+});
+
+/**
+ * Listens for SOLDECODE_GET_CONFIG messages from inject.ts at load time.
+ * Fetches the current settings from the service worker and posts a
+ * SOLDECODE_CONFIG message back to the window so inject.ts can cache the
+ * simulation timeout before any sign request fires. Because inject.ts runs
+ * at document_start (before the dApp's scripts load), this handshake
+ * completes before the first user interaction with a dApp.
+ */
+window.addEventListener("message", async (event) => {
+  if (event.source !== window) return;
+  const data = event.data as Record<string, unknown> | null;
+  if (
+    typeof data !== "object" ||
+    data === null ||
+    data.type !== "SOLDECODE_GET_CONFIG"
+  ) {
+    return;
+  }
+  try {
+    const settingsResponse = await chrome.runtime.sendMessage({ type: "GET_SETTINGS" }) as
+      | { enabled: boolean; configured: boolean; simulationTimeoutMs: number }
+      | undefined;
+    window.postMessage({
+      type: "SOLDECODE_CONFIG",
+      simulationTimeoutMs: settingsResponse?.simulationTimeoutMs ?? 30_000,
+    }, "*");
+  } catch (e) {
+    // Context invalidated or runtime error — reply with default so inject.ts
+    // still has a sensible value cached.
+    console.warn("[SolDecode] Failed to fetch config for inject.ts:", e);
+    window.postMessage({
+      type: "SOLDECODE_CONFIG",
+      simulationTimeoutMs: 30_000,
+    }, "*");
+  }
 });
 
 // Inject the main-world script immediately at document_start.
