@@ -1,6 +1,6 @@
 {
   "name": "soldecode-extension",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Chrome extension that shows you what a Solana transaction will do before you sign it",
   "scripts": {
     "dev": "vite build --watch",

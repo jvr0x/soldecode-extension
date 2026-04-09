@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-04-09
+
 ### Added
 
 - **Multi-token divergence detection** in the post-submission tracker. The `computeDivergence` function in `src/service-worker.ts` now flags two additional classes of result drift beyond the per-simulated-mint comparison: "surprise tokens" (any mint that appears in the actual finalized transaction but was not in the simulated preview) and "surprise SOL" (a non-trivial SOL delta when the simulation predicted none). The first catches token-impersonation scams where a user expected BONK and received FAKE_BONK at a different mint; the second catches unexpected SOL movement above the fee-dust threshold.
@@ -17,7 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Extension name in `manifest.json`** changed from `SolDecode - Solana Transaction Preview` (with an em dash) to the same string with a regular hyphen. User-visible in `chrome://extensions`.
 - **Brave Wallet removed from the Supported Wallets list.** It was previously listed as "not yet verified" pending investigation. Brave Wallet is built into the browser rather than injected as a Chrome extension, and its signing path bypasses the page-world Wallet Standard interception SolDecode relies on. Supporting it would require a fundamentally different hooking approach and the user base is small enough that the explanation is not worth carrying in the README.
+- **All em dashes removed from the landing page** in favor of regular hyphens. Title, meta descriptions, OG / Twitter card tags, hero subhead, detector card copy, screenshot captions, and install section all updated. 13 replacements total.
 
 ## [0.5.0] - 2026-04-08
 
@@ -77,6 +81,7 @@ The main themes of the pre-v0.4.0 releases were:
 - [Landing page design spec](docs/superpowers/specs/2026-04-08-landing-page-design.md) - the website architecture
 - [Implementation plans](docs/superpowers/plans/) - the task-by-task work that produced the commits above
 
-[Unreleased]: https://github.com/jvr0x/soldecode-extension/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/jvr0x/soldecode-extension/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/jvr0x/soldecode-extension/releases/tag/v0.6.0
 [0.5.0]: https://github.com/jvr0x/soldecode-extension/releases/tag/v0.5.0
 [0.4.0]: https://github.com/jvr0x/soldecode-extension/releases/tag/v0.4.0

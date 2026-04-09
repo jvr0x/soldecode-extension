@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "SolDecode — Solana Transaction Preview",
-  "version": "0.5.0",
+  "name": "SolDecode - Solana Transaction Preview",
+  "version": "0.6.0",
   "description": "See what Solana transactions will do before you sign them.",
   "permissions": ["storage"],
   "host_permissions": ["https://*.helius-rpc.com/*"],
