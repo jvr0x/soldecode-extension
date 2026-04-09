@@ -1,0 +1,50 @@
+name: Deploy Website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - 'assets/screenshots/jupiter-preview.png'
+      - 'assets/screenshots/kamino-preview.png'
+      - 'assets/screenshots/marginfi-preview.png'
+      - 'assets/icon-48.png'
+      - '.github/workflows/deploy-website.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-website
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Build staging directory
+        run: |
+          set -euo pipefail
+          mkdir -p staging/assets/screenshots
+          cp -R website/. staging/
+          cp assets/screenshots/jupiter-preview.png staging/assets/screenshots/
+          cp assets/screenshots/kamino-preview.png staging/assets/screenshots/
+          cp assets/screenshots/marginfi-preview.png staging/assets/screenshots/
+          cp assets/icon-48.png staging/assets/icon-48.png
+          echo "Staging contents:"
+          find staging -type f | sort
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./staging
+          publish_branch: gh-pages
+          commit_message: "deploy: ${{ github.sha }}"
+          force_orphan: true
