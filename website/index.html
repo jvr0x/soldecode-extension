@@ -114,7 +114,47 @@
     </div>
   </section>
 
-  <!--FEATURES-->
+  <section id="features" class="border-t border-[#1a1d24] px-6 md:px-12 py-20">
+    <div class="max-w-6xl mx-auto">
+      <div class="text-center mb-12">
+        <div class="text-xs text-[#00d4aa] uppercase tracking-[1.5px] font-bold mb-3.5">What it catches</div>
+        <h2 class="text-3xl md:text-4xl text-white font-bold leading-tight mb-3.5">Structural detectors, not log scraping.</h2>
+        <p class="text-base text-[#8a8f98] leading-[1.55] max-w-[640px] mx-auto">Every instruction is parsed from the raw tx bytes. Drainers and rugs can&rsquo;t hide behind obfuscated logs because we never look at logs.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div class="border border-[#2a2f3a] bg-[#1a1d24] rounded-2xl p-6">
+          <h3 class="text-[17px] text-white font-semibold mb-2">Unlimited Approvals</h3>
+          <p class="text-sm text-[#8a8f98] leading-[1.5]">Flags any <code class="text-[#00d4aa] text-xs">Approve</code> or <code class="text-[#00d4aa] text-xs">ApproveChecked</code> instruction with <code class="text-[#00d4aa] text-xs">amount u64::MAX</code> &mdash; the canonical &ldquo;drain my wallet forever&rdquo; permission used by every phishing kit.</p>
+        </div>
+
+        <div class="border border-[#2a2f3a] bg-[#1a1d24] rounded-2xl p-6">
+          <h3 class="text-[17px] text-white font-semibold mb-2">Wallet Drainers</h3>
+          <p class="text-sm text-[#8a8f98] leading-[1.5]">Detects transactions that would wipe &ge;95% of any token or SOL balance, regardless of which program is doing the draining.</p>
+        </div>
+
+        <div class="border border-[#2a2f3a] bg-[#1a1d24] rounded-2xl p-6">
+          <h3 class="text-[17px] text-white font-semibold mb-2">Impersonator Tokens</h3>
+          <p class="text-sm text-[#8a8f98] leading-[1.5]">Catches fake USDC/USDT/JUP tokens, including Unicode spoofs like Cyrillic &#x0421; and fullwidth &#xFF35;&#xFF33;&#xFF24;&#xFF23;, by matching against a canonical mint table.</p>
+        </div>
+
+        <div class="border border-[#2a2f3a] bg-[#1a1d24] rounded-2xl p-6">
+          <h3 class="text-[17px] text-white font-semibold mb-2">Address Poisoning</h3>
+          <p class="text-sm text-[#8a8f98] leading-[1.5]">Flags outgoing transfers whose destination looks like but isn&rsquo;t an address you&rsquo;ve previously sent to. Catches Phase 2 of the poisoning attack.</p>
+        </div>
+
+        <div class="border border-[#2a2f3a] bg-[#1a1d24] rounded-2xl p-6">
+          <h3 class="text-[17px] text-white font-semibold mb-2">Result Divergence</h3>
+          <p class="text-sm text-[#8a8f98] leading-[1.5]">After you sign, the extension polls the chain and compares the actual balance changes against the simulation. &ge;5% drift fires a warning toast.</p>
+        </div>
+
+        <div class="border border-[#2a2f3a] bg-[#1a1d24] rounded-2xl p-6">
+          <h3 class="text-[17px] text-white font-semibold mb-2">Fee Bombs</h3>
+          <p class="text-sm text-[#8a8f98] leading-[1.5]">Transactions that set priority fees &ge;0.05 SOL to silently siphon SOL via the fee mechanism.</p>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <!--SCREENSHOTS-->
 
