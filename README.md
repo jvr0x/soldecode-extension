@@ -178,8 +178,6 @@ npm test
 - **Solflare** (via Wallet Standard)
 - **Backpack** (via Wallet Standard)
 
-Brave Wallet is not yet verified.
-
 ### Gasless / Multi-Transaction Flows
 
 SolDecode handles dApps that route through a relayer (Jupiter Ultra Gasless) or sign multiple transactions at once. The injection layer reads the connected wallet's pubkey directly from the provider so balance changes are decoded against the **user's** account, not the relayer's. For `signAllTransactions` batches, the **last** transaction in the batch is previewed (this is almost always the meaningful swap; earlier txs are setup like wrap-SOL or ATA creation).
