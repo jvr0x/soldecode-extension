@@ -346,10 +346,13 @@ function computeDivergence(
 
   // For each simulated change, find the corresponding actual and compare.
   const diverged: string[] = [];
+  const SOL_MINT = "So11111111111111111111111111111111111111112";
+  const simulatedMints = new Set(simPreview.balanceChanges.map((c) => c.mint));
+
   for (const simChange of simPreview.balanceChanges) {
     const simAmount = simChange.amount;
     const actualAmount =
-      simChange.mint === "So11111111111111111111111111111111111111112"
+      simChange.mint === SOL_MINT
         ? actualSol
         : (actualTokens.get(simChange.mint) ?? 0);
     if (Math.abs(simAmount) < 1e-9) continue; // skip zero-amount sim entries
@@ -359,6 +362,32 @@ function computeDivergence(
         `${simChange.symbol}: expected ${simAmount.toFixed(6)}, got ${actualAmount.toFixed(6)}`,
       );
     }
+  }
+
+  // Catch "surprise" token mints — mints that showed up in the actual tx
+  // but were NOT predicted by the simulation. This is the scenario where
+  // a scam gives you a worthless copycat token with a symbol you recognize:
+  // the simulation said you'd receive BONK, the actual result gave you
+  // FAKE_BONK at a different mint address. Without this check the
+  // per-simulated-mint loop above would miss it entirely because FAKE_BONK
+  // is not in simPreview.balanceChanges.
+  for (const [mint, actualAmount] of actualTokens) {
+    if (simulatedMints.has(mint)) continue;
+    if (Math.abs(actualAmount) < 0.000001) continue;
+    const shortMint = `${mint.slice(0, 4)}…${mint.slice(-4)}`;
+    diverged.push(
+      `unexpected token ${shortMint}: simulation did not predict this, got ${actualAmount.toFixed(6)}`,
+    );
+  }
+
+  // Catch "surprise" SOL change — the simulation had no SOL balance-change
+  // entry, but the actual tx moved a non-trivial amount of SOL. The 0.01
+  // threshold matches the fee-dust threshold used elsewhere so normal
+  // network fees do not trigger a false divergence.
+  if (!simulatedMints.has(SOL_MINT) && Math.abs(actualSol) >= 0.01) {
+    diverged.push(
+      `unexpected SOL: simulation did not predict this, got ${actualSol.toFixed(6)}`,
+    );
   }
 
   if (diverged.length > 0) {
