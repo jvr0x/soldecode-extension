@@ -3,20 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SolDecode — See what a Solana transaction will do before you sign it.</title>
-  <meta name="description" content="A Chrome extension that intercepts wallet sign requests, simulates the transaction on-chain, and shows you exactly what will happen to your wallet — so drainers and rugs never make it past the preview.">
+  <title>SolDecode - See what a Solana transaction will do before you sign it.</title>
+  <meta name="description" content="A Chrome extension that intercepts wallet sign requests, simulates the transaction on-chain, and shows you exactly what will happen to your wallet - so drainers and rugs never make it past the preview.">
 
   <!-- Open Graph -->
-  <meta property="og:title" content="SolDecode — See what a Solana transaction will do before you sign it.">
-  <meta property="og:description" content="A Chrome extension that intercepts wallet sign requests, simulates the transaction on-chain, and shows you exactly what will happen to your wallet — so drainers and rugs never make it past the preview.">
+  <meta property="og:title" content="SolDecode - See what a Solana transaction will do before you sign it.">
+  <meta property="og:description" content="A Chrome extension that intercepts wallet sign requests, simulates the transaction on-chain, and shows you exactly what will happen to your wallet - so drainers and rugs never make it past the preview.">
   <meta property="og:image" content="https://jvr0x.github.io/soldecode-extension/assets/og-image.png">
   <meta property="og:url" content="https://jvr0x.github.io/soldecode-extension/">
   <meta property="og:type" content="website">
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="SolDecode — See what a Solana transaction will do before you sign it.">
-  <meta name="twitter:description" content="A Chrome extension that intercepts wallet sign requests, simulates the transaction on-chain, and shows you exactly what will happen to your wallet — so drainers and rugs never make it past the preview.">
+  <meta name="twitter:title" content="SolDecode - See what a Solana transaction will do before you sign it.">
+  <meta name="twitter:description" content="A Chrome extension that intercepts wallet sign requests, simulates the transaction on-chain, and shows you exactly what will happen to your wallet - so drainers and rugs never make it past the preview.">
   <meta name="twitter:image" content="https://jvr0x.github.io/soldecode-extension/assets/og-image.png">
 
   <link rel="icon" type="image/png" href="assets/icon-48.png">
@@ -68,7 +68,7 @@
         See what a Solana transaction<br>will do <span class="text-[#00d4aa]">before you sign it</span>.
       </h1>
       <p class="text-base md:text-[17px] text-[#8a8f98] leading-[1.55] mb-8 max-w-[640px] mx-auto">
-        A Chrome extension that intercepts wallet sign requests, simulates the transaction on-chain, and shows you exactly what will happen to your wallet — so drainers and rugs never make it past the preview.
+        A Chrome extension that intercepts wallet sign requests, simulates the transaction on-chain, and shows you exactly what will happen to your wallet - so drainers and rugs never make it past the preview.
       </p>
       <div class="flex flex-col sm:flex-row gap-3 justify-center">
         <a href="#install" class="inline-block bg-[#00d4aa] text-[#0e1116] px-6 py-3.5 rounded-lg text-sm font-bold hover:brightness-110 transition-all">
@@ -144,7 +144,7 @@
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <div class="border border-[#2a2f3a] bg-[#1a1d24] rounded-2xl p-6">
           <h3 class="text-[17px] text-white font-semibold mb-2">Unlimited Approvals</h3>
-          <p class="text-sm text-[#8a8f98] leading-[1.5]">Flags any <code class="text-[#00d4aa] text-xs">Approve</code> or <code class="text-[#00d4aa] text-xs">ApproveChecked</code> instruction with <code class="text-[#00d4aa] text-xs">amount u64::MAX</code> &mdash; the canonical &ldquo;drain my wallet forever&rdquo; permission used by every phishing kit.</p>
+          <p class="text-sm text-[#8a8f98] leading-[1.5]">Flags any <code class="text-[#00d4aa] text-xs">Approve</code> or <code class="text-[#00d4aa] text-xs">ApproveChecked</code> instruction with <code class="text-[#00d4aa] text-xs">amount u64::MAX</code> - the canonical &ldquo;drain my wallet forever&rdquo; permission used by every phishing kit.</p>
         </div>
 
         <div class="border border-[#2a2f3a] bg-[#1a1d24] rounded-2xl p-6">
@@ -185,15 +185,15 @@
       <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <figure>
           <img src="assets/screenshots/jupiter-preview.png" alt="SolDecode preview of a Jupiter swap showing the plain-English summary, balance changes, and proceed/reject buttons" loading="lazy" class="w-full rounded-xl shadow-2xl border border-[#2a2f3a]">
-          <figcaption class="text-sm text-[#8a8f98] mt-3 leading-[1.5]"><span class="text-white font-semibold">Jupiter swap</span> &mdash; plain-English summary with token symbols.</figcaption>
+          <figcaption class="text-sm text-[#8a8f98] mt-3 leading-[1.5]"><span class="text-white font-semibold">Jupiter swap</span> - plain-English summary with token symbols.</figcaption>
         </figure>
         <figure>
           <img src="assets/screenshots/kamino-preview.png" alt="SolDecode preview of a Kamino deposit showing token mint resolution and balance changes" loading="lazy" class="w-full rounded-xl shadow-2xl border border-[#2a2f3a]">
-          <figcaption class="text-sm text-[#8a8f98] mt-3 leading-[1.5]"><span class="text-white font-semibold">Kamino deposit</span> &mdash; balance changes and mint resolution.</figcaption>
+          <figcaption class="text-sm text-[#8a8f98] mt-3 leading-[1.5]"><span class="text-white font-semibold">Kamino deposit</span> - balance changes and mint resolution.</figcaption>
         </figure>
         <figure>
           <img src="assets/screenshots/marginfi-preview.png" alt="SolDecode preview of a MarginFi transaction that would have failed on-chain, with a human-readable error explanation" loading="lazy" class="w-full rounded-xl shadow-2xl border border-[#2a2f3a]">
-          <figcaption class="text-sm text-[#8a8f98] mt-3 leading-[1.5]"><span class="text-white font-semibold">MarginFi failure</span> &mdash; the transaction would have failed on-chain. Explained before you signed.</figcaption>
+          <figcaption class="text-sm text-[#8a8f98] mt-3 leading-[1.5]"><span class="text-white font-semibold">MarginFi failure</span> - the transaction would have failed on-chain. Explained before you signed.</figcaption>
         </figure>
       </div>
     </div>
@@ -210,7 +210,7 @@
         <div class="border border-[#2a2f3a] bg-[#1a1d24] rounded-2xl p-6">
           <h3 class="text-[17px] text-white font-semibold mb-4">From Chrome Web Store</h3>
           <button type="button" disabled aria-disabled="true" class="bg-[#2a2f3a] text-[#8a8f98] px-5 py-3 rounded-lg text-sm font-bold cursor-not-allowed">Coming soon</button>
-          <p class="text-sm text-[#8a8f98] mt-4 leading-[1.5]">The listing is under review. Install from source in the meantime &mdash; it takes 30 seconds.</p>
+          <p class="text-sm text-[#8a8f98] mt-4 leading-[1.5]">The listing is under review. Install from source in the meantime - it takes 30 seconds.</p>
         </div>
 
         <div class="border border-[#2a2f3a] bg-[#1a1d24] rounded-2xl p-6">
@@ -219,7 +219,7 @@
 cd soldecode-extension
 npm install &amp;&amp; npm run build</code></pre>
           <p class="text-sm text-[#8a8f98] mt-3 leading-[1.5]">Then open <code class="text-[#00d4aa]">chrome://extensions</code>, enable Developer mode, and click <strong class="text-white">Load unpacked</strong> on the <code class="text-[#00d4aa]">dist/</code> folder.</p>
-          <p class="text-sm text-[#8a8f98] mt-2">Requires a Helius RPC endpoint &mdash; <a href="https://dashboard.helius.dev" target="_blank" rel="noopener noreferrer" class="text-[#00d4aa] hover:underline">get one free</a>.</p>
+          <p class="text-sm text-[#8a8f98] mt-2">Requires a Helius RPC endpoint - <a href="https://dashboard.helius.dev" target="_blank" rel="noopener noreferrer" class="text-[#00d4aa] hover:underline">get one free</a>.</p>
         </div>
       </div>
     </div>
