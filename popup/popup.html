@@ -61,6 +61,54 @@
     .status { color: #00d4aa; font-size: 10px; margin-top: 8px; display: none; }
     .help { color: #666; font-size: 10px; margin-top: 4px; }
     .help a { color: #8b5cf6; }
+    .divider { border-top: 1px solid #222; margin: 16px 0 12px; }
+    .contacts-section { }
+    .contacts-header {
+      color: #888;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+    .contacts-list {
+      max-height: 140px;
+      overflow-y: auto;
+      background: #1a1a2e;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 4px 0;
+      margin-bottom: 8px;
+    }
+    .contacts-list::-webkit-scrollbar { width: 6px; }
+    .contacts-list::-webkit-scrollbar-track { background: transparent; }
+    .contacts-list::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+    .contact-row {
+      padding: 4px 10px;
+      color: #bbb;
+      font-family: monospace;
+      font-size: 11px;
+    }
+    .contact-row + .contact-row { border-top: 1px solid #1f1f2e; }
+    .contacts-empty {
+      padding: 12px 10px;
+      color: #555;
+      font-size: 11px;
+      font-style: italic;
+      text-align: center;
+    }
+    .clear-btn {
+      width: 100%;
+      background: transparent;
+      color: #888;
+      border: 1px solid #333;
+      padding: 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .clear-btn:hover { color: #ff5c5c; border-color: #ff5c5c; }
+    .clear-btn:disabled { cursor: not-allowed; opacity: 0.5; }
+    .clear-btn:disabled:hover { color: #888; border-color: #333; }
   </style>
 </head>
 <body>
@@ -93,6 +141,16 @@
 
   <button class="save-btn" id="save">Save Settings</button>
   <div class="status" id="status">✓ Settings saved</div>
+
+  <div class="divider"></div>
+
+  <div class="contacts-section">
+    <div class="contacts-header">Trusted Recipients (<span id="contactsCount">0</span>)</div>
+    <div class="contacts-list" id="contactsList">
+      <div class="contacts-empty" id="contactsEmpty">No contacts yet. They'll appear here after you send to a new address.</div>
+    </div>
+    <button class="clear-btn" id="clearContacts" disabled>Clear history</button>
+  </div>
 
   <script src="../popup.js"></script>
 </body>

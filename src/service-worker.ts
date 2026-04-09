@@ -70,6 +70,22 @@ async function commitContacts(newDestinations: string[]): Promise<void> {
 }
 
 /**
+ * Listens for chrome.storage.local changes to the known-contacts key and
+ * refreshes the in-memory cache so the lookalike detector stays in sync
+ * with what the popup shows. Triggered whenever any context (popup,
+ * another extension page, chrome://extensions storage edit) writes to
+ * the key. Without this, clearing contacts from the popup would leave
+ * the detector running against a stale cache.
+ */
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local") return;
+  if (!(KNOWN_CONTACTS_KEY in changes)) return;
+  const next = changes[KNOWN_CONTACTS_KEY].newValue;
+  cachedContacts = Array.isArray(next) ? (next as string[]) : [];
+  console.log(`[SolDecode] contacts cache refreshed from storage change (${cachedContacts.length} entries)`);
+});
+
+/**
  * Removes stale entries from pendingPreviews. Called opportunistically on
  * each TRACK_TX so the map doesn't grow unbounded.
  */
