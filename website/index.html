@@ -23,6 +23,25 @@
 
   <!-- Tailwind Play CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    /* Respect the OS-level reduced-motion preference so smooth-scroll
+       does not affect users with vestibular disorders. */
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+
+    /* Keyboard focus ring in the brand accent teal, applied globally to
+       every interactive element. Uses :focus-visible so the ring only
+       appears when the user is actually navigating via keyboard, not
+       on every mouse click. */
+    a:focus-visible,
+    button:focus-visible {
+      outline: 2px solid #00d4aa;
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+  </style>
 </head>
 <body class="bg-[#0e1116] text-[#e0e3e8] antialiased" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
 
@@ -35,7 +54,7 @@
       </svg>
       <span class="text-white font-bold tracking-wider text-sm">SOLDECODE</span>
     </a>
-    <div class="hidden md:flex gap-7 text-[#8a8f98] text-sm">
+    <div class="hidden sm:flex gap-7 text-[#8a8f98] text-sm">
       <a href="#features" class="hover:text-white transition-colors">Features</a>
       <a href="#screenshots" class="hover:text-white transition-colors">Screenshots</a>
       <a href="#install" class="hover:text-white transition-colors">Install</a>
