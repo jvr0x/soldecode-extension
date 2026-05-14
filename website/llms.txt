@@ -1,0 +1,35 @@
+# SolDecode
+
+> Chrome extension that intercepts Solana wallet sign requests, simulates the transaction on-chain, and shows you exactly what will happen to your wallet before you sign. Drainers, rug pulls, infinite-approval traps, and address-poisoning attempts get caught in the preview, not in your portfolio.
+
+SolDecode is a defensive layer for Solana users. It sits between your wallet and the dapp at sign time, parses the pending transaction, simulates it on a recent slot, and renders a plain-English summary of the net effect on your wallet: which tokens move, where they go, and whether anything looks like a known phishing pattern.
+
+## Key pages
+- [Home](https://jvr0x.github.io/soldecode-extension/): product overview, screenshots, install link
+
+## What it catches
+- Infinite-approval drainers (any Approve/ApproveChecked with amount = u64::MAX)
+- Spoofed token mints (Unicode look-alikes, fake USDC/USDT/JUP, etc.) matched against a canonical mint table
+- Address-poisoning attempts via similar-looking destination addresses
+- Net-negative token flows that the user did not intend
+- Failed-tx reasons rendered in plain English instead of cryptic error codes
+
+## How it works
+- Intercepts the signTransaction / signAllTransactions request from the connected wallet
+- Simulates the transaction against a recent Solana slot via RPC
+- Parses the resulting balance changes and instructions
+- Surfaces a human-readable preview before the wallet's own sign prompt
+- Lets the user reject if the preview does not match the intent of the action they triggered on the dapp
+
+## Tech
+- Chrome extension (Manifest V3)
+- Static marketing site at https://jvr0x.github.io/soldecode-extension/
+- Solana RPC via Helius for parsed transaction data
+
+## Install
+- Chrome Web Store: see install link on the home page
+
+## Contact
+- Author: @jvr0x on X
+- Issues: https://github.com/jvr0x/soldecode-extension/issues
+- Privacy policy: https://jvr0x.github.io/soldecode-extension/PRIVACY.md
