@@ -1,0 +1,18 @@
+# SolDecode Security Disclosure Policy
+# https://datatracker.ietf.org/doc/html/rfc9116
+
+Contact: https://x.com/jvr0x
+Contact: https://github.com/jvr0x/soldecode-extension/issues
+Expires: 2027-05-14T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://jvr0x.github.io/soldecode-extension/.well-known/security.txt
+
+# Scope:
+#   In-scope:     the SolDecode browser extension and marketing site.
+#   Out-of-scope: third-party RPC providers (Helius), Solana itself,
+#                 and any tokens or contracts surfaced by the extension.
+
+# Please open a private GitHub security advisory at
+# https://github.com/jvr0x/soldecode-extension/security/advisories
+# or DM @jvr0x on X with reproduction steps. Coordinated disclosure
+# preferred; please do not publish before a fix is shipped.
