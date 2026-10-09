@@ -28,7 +28,7 @@
   <meta property="og:image:alt" content="SolDecode - Solana transaction preview before you sign">
   <meta property="og:url" content="https://jvr0x.com/soldecode-extension/">
   <meta property="og:type" content="website">
-  <meta property="og:site_name" content="SolDecode">
+  <meta property="og:site_name" content="jvr0x">
   <meta property="og:locale" content="en_US">
 
   <!-- Twitter -->
@@ -41,6 +41,8 @@
   <meta name="twitter:image:alt" content="SolDecode - Solana transaction preview before you sign">
 
   <link rel="icon" type="image/png" href="assets/icon-48.png">
+  <!-- Shared jvr0x.com header/footer styles (served by jvr0x.github.io) -->
+  <link rel="stylesheet" href="/assets/chrome.css">
 
   <!-- JSON-LD: Organization -->
   <script type="application/ld+json">
@@ -123,6 +125,21 @@
   </style>
 </head>
 <body class="bg-[#0e1116] text-[#e0e3e8] antialiased" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+
+<!-- jx:header -->
+<header class="jx-header">
+  <a class="jx-logo" href="/">jvr0x<span class="jx-blink">_</span></a>
+  <nav class="jx-nav" aria-label="Site">
+    <a href="/about/">about</a>
+    <a href="/newsletter/">newsletter</a>
+    <a href="/models/">models</a>
+    <a href="/recipes/">recipes</a>
+    <a href="/lab/">lab</a>
+    <a href="/tools/">tools</a>
+    <a href="/bots/">bots</a>
+  </nav>
+</header>
+<!-- /jx:header -->
 
   <nav class="border-b border-[#1a1d24] px-6 md:px-12 py-5 flex justify-between items-center">
     <a href="./" class="flex items-center gap-2.5">
@@ -314,6 +331,24 @@ npm install &amp;&amp; npm run build</code></pre>
       </div>
     </div>
   </footer>
+
+<!-- jx:footer -->
+<footer class="jx-footer">
+  <div class="jx-signup">
+    <p class="jx-prompt">$ subscribe agi-checkpoint</p>
+    <p>AGI Checkpoint: the AI releases worth your time, every Friday. Free Local AI Cheat Sheet when you sign up.</p>
+    <iframe src="https://agicheckpoint.com/embed" title="Subscribe to AGI Checkpoint" loading="lazy" frameborder="0" scrolling="no"></iframe>
+  </div>
+  <div class="jx-footer-links">
+    <a href="https://x.com/jvr0x" rel="noopener">x.com/jvr0x</a>
+    <a href="https://github.com/jvr0x" rel="noopener">github</a>
+    <a href="https://huggingface.co/jvr0x" rel="noopener">huggingface</a>
+    <a href="https://agicheckpoint.com" rel="noopener">agicheckpoint.com</a>
+    <a href="https://ko-fi.com/jvr0x" rel="noopener">ko-fi</a>
+  </div>
+  <p class="jx-sig">Javier &bull; Software Engineer | Local AI</p>
+</footer>
+<!-- /jx:footer -->
 
 </body>
 </html>
