@@ -1,5 +1,5 @@
 # SolDecode - Robots.txt
-# https://jvr0x.github.io/soldecode-extension/
+# https://jvr0x.com/soldecode-extension/
 
 User-agent: *
 Allow: /
@@ -58,4 +58,4 @@ Allow: /
 User-agent: DuckAssistBot
 Allow: /
 
-Sitemap: https://jvr0x.github.io/soldecode-extension/sitemap.xml
+Sitemap: https://jvr0x.com/soldecode-extension/sitemap.xml

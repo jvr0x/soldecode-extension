@@ -14,7 +14,7 @@ When a dApp asks you to sign a transaction, SolDecode intercepts the request, si
 
 > Above: a Jupiter swap (USDC → cbBTC) with the new "What Will Happen" plain-English summary, a Kamino send showing token symbols + shortened mint addresses, and a MarginFi transaction that would fail — caught and explained before reaching the wallet.
 >
-> **Live site:** [soldecode-extension on GitHub Pages](https://jvr0x.github.io/soldecode-extension/)
+> **Live site:** [soldecode-extension on GitHub Pages](https://jvr0x.com/soldecode-extension/)
 
 ## How It Works
 

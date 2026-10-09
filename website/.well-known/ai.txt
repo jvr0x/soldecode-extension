@@ -7,5 +7,5 @@ Allow: /
 # Public content on this site is intended to be indexed, summarized,
 # and cited by AI agents and LLM-powered tools.
 
-Sitemap: https://jvr0x.github.io/soldecode-extension/sitemap.xml
-LLMs: https://jvr0x.github.io/soldecode-extension/llms.txt
+Sitemap: https://jvr0x.com/soldecode-extension/sitemap.xml
+LLMs: https://jvr0x.com/soldecode-extension/llms.txt

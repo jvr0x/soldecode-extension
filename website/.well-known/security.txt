@@ -5,7 +5,7 @@ Contact: https://x.com/jvr0x
 Contact: https://github.com/jvr0x/soldecode-extension/issues
 Expires: 2027-05-14T00:00:00.000Z
 Preferred-Languages: en
-Canonical: https://jvr0x.github.io/soldecode-extension/.well-known/security.txt
+Canonical: https://jvr0x.com/soldecode-extension/.well-known/security.txt
 
 # Scope:
 #   In-scope:     the SolDecode browser extension and marketing site.

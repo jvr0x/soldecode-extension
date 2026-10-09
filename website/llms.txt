@@ -5,7 +5,7 @@
 SolDecode is a defensive layer for Solana users. It sits between your wallet and the dapp at sign time, parses the pending transaction, simulates it on a recent slot, and renders a plain-English summary of the net effect on your wallet: which tokens move, where they go, and whether anything looks like a known phishing pattern.
 
 ## Key pages
-- [Home](https://jvr0x.github.io/soldecode-extension/): product overview, screenshots, install link
+- [Home](https://jvr0x.com/soldecode-extension/): product overview, screenshots, install link
 
 ## What it catches
 - Infinite-approval drainers (any Approve/ApproveChecked with amount = u64::MAX)
@@ -23,7 +23,7 @@ SolDecode is a defensive layer for Solana users. It sits between your wallet and
 
 ## Tech
 - Chrome extension (Manifest V3)
-- Static marketing site at https://jvr0x.github.io/soldecode-extension/
+- Static marketing site at https://jvr0x.com/soldecode-extension/
 - Solana RPC via Helius for parsed transaction data
 
 ## Install
@@ -32,4 +32,4 @@ SolDecode is a defensive layer for Solana users. It sits between your wallet and
 ## Contact
 - Author: @jvr0x on X
 - Issues: https://github.com/jvr0x/soldecode-extension/issues
-- Privacy policy: https://jvr0x.github.io/soldecode-extension/PRIVACY.md
+- Privacy policy: https://jvr0x.com/soldecode-extension/PRIVACY.md
