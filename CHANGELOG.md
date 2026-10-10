@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Landing page** now carries the shared jvr0x.com header and footer (with the AGI Checkpoint newsletter signup) around its own nav and footer, and the full Open Graph / Twitter tag set (`og:site_name` is now `jvr0x`).
+- **Landing page** now carries the shared jvr0x.com header and footer around its own nav and footer, and the full Open Graph / Twitter tag set (`og:site_name` is now `jvr0x`).
 
 ## [0.6.0] - 2026-04-09
 
